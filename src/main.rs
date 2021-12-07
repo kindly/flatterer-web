@@ -63,7 +63,7 @@ async fn download_file(mut req: Request<()>) -> tide::Result<Response> {
 
     let download_value = download(url_string.clone()).await?;
 
-    if let Some(_) = download_value.get("error") {
+    if download_value.get("error").is_some() {
         let mut res = Response::new(StatusCode::BadRequest);
         let body = Body::from_json(&download_value)?;
         res.set_body(body);
@@ -102,7 +102,7 @@ async fn download(url_string: String) -> tide::Result<serde_json::Value> {
 
     copy(file_response, writer).await?;
 
-    return Ok(serde_json::json!({"id": uuid.to_string ()}))
+    Ok(serde_json::json!({"id": uuid.to_string ()}))
 }
 
 async fn api(req: Request<()>) -> tide::Result<Response> {
@@ -180,13 +180,13 @@ fn run_flatterer(query: Query, download_file: String, output_path: PathBuf) -> t
         query.csv.unwrap_or(true),
         query.xlsx.unwrap_or(false),
         true, // force
-        query.main_table_name.unwrap_or("main".to_string()),
+        query.main_table_name.unwrap_or_else(|| "main".to_string()),
         vec![], // list of json paths to omit object as if it was array
         query.inline_one_to_one.unwrap_or(false),
-        query.json_schema.unwrap_or("".to_string()),
-        query.table_schema.unwrap_or("".to_string()),
-        query.path_seperator.unwrap_or("_".to_string()),
-        query.schema_titles.unwrap_or("_".to_string()),
+        query.json_schema.unwrap_or_else(|| "".to_string()),
+        query.table_schema.unwrap_or_else(|| "".to_string()),
+        query.path_seperator.unwrap_or_else(|| "_".to_string()),
+        query.schema_titles.unwrap_or_else(|| "_".to_string()),
     )
     .unwrap();
 
