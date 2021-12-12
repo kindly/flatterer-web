@@ -278,7 +278,7 @@ async fn convert(mut req: Request<()>) -> tide::Result<Response> {
         }
     }
 
-    if let Some(_) = json_output.get("error") {
+    if json_output.get("error").is_some() {
         let mut res = Response::new(StatusCode::BadRequest);
         let body = Body::from_json(&json_output)?;
         res.set_body(body);
@@ -294,7 +294,7 @@ async fn convert(mut req: Request<()>) -> tide::Result<Response> {
 
     let tmp_dir_path_to_move = tmp_dir_path.to_path_buf();
 
-    let output_format = query.output_format.unwrap_or("zip".to_string());
+    let output_format = query.output_format.unwrap_or_else(|| "zip".to_string());
 
     if output_format == "fields" {
         let fields_value = fields_output(output_path.clone())?;
@@ -374,7 +374,7 @@ fn run_flatterer(
     let file = StdFile::open(download_file)?;
     let reader = StdBufReader::new(file);
 
-    let output_format = query.output_format.unwrap_or("zip".to_string());
+    let output_format = query.output_format.unwrap_or_else(|| "zip".to_string());
 
     if output_format != "zip" {
         query.csv = Some(false);

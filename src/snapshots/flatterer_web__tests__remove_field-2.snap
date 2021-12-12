@@ -1,0 +1,63 @@
+---
+source: src/main.rs
+expression: "&response_body_after_fields"
+
+---
+fields:
+  - count: "658"
+    field_name: _link
+    field_title: _link
+    field_type: text
+    table_name: main
+  - count: "658"
+    field_name: _link_main
+    field_title: _link_main
+    field_type: text
+    table_name: main
+  - count: "658"
+    field_name: year
+    field_title: year
+    field_type: text
+    table_name: main
+  - count: "658"
+    field_name: category
+    field_title: category
+    field_type: text
+    table_name: main
+  - count: "58"
+    field_name: overallMotivation
+    field_title: overallMotivation
+    field_type: text
+    table_name: main
+  - count: "975"
+    field_name: _link
+    field_title: _link
+    field_type: text
+    table_name: laureates
+  - count: "975"
+    field_name: _link_main
+    field_title: _link_main
+    field_type: text
+    table_name: laureates
+  - count: "975"
+    field_name: id
+    field_title: id
+    field_type: text
+    table_name: laureates
+  - count: "975"
+    field_name: firstname
+    field_title: firstname
+    field_type: text
+    table_name: laureates
+  - count: "945"
+    field_name: surname
+    field_title: surname
+    field_type: text
+    table_name: laureates
+  - count: "975"
+    field_name: motivation
+    field_title: motivation
+    field_type: text
+    table_name: laureates
+id: "[id]"
+

@@ -1,0 +1,106 @@
+---
+source: src/main.rs
+expression: "&response_body"
+
+---
+fields:
+  - count: "2"
+    field_name: _link
+    field_title: _link
+    field_type: text
+    table_name: main
+  - count: "2"
+    field_name: _link_main
+    field_title: _link_main
+    field_type: text
+    table_name: main
+  - count: "2"
+    field_name: id
+    field_title: id
+    field_type: number
+    table_name: main
+  - count: "2"
+    field_name: title
+    field_title: title
+    field_type: text
+    table_name: main
+  - count: "2"
+    field_name: releaseDate
+    field_title: releaseDate
+    field_type: date
+    table_name: main
+  - count: "2"
+    field_name: rating_code
+    field_title: rating_code
+    field_type: text
+    table_name: main
+  - count: "2"
+    field_name: rating_name
+    field_title: rating_name
+    field_type: text
+    table_name: main
+  - count: "2"
+    field_name: _link
+    field_title: _link
+    field_type: text
+    table_name: developer
+  - count: "2"
+    field_name: _link_main
+    field_title: _link_main
+    field_type: text
+    table_name: developer
+  - count: "2"
+    field_name: name
+    field_title: name
+    field_type: text
+    table_name: developer
+  - count: "3"
+    field_name: _link
+    field_title: _link
+    field_type: text
+    table_name: platforms
+  - count: "3"
+    field_name: _link_main
+    field_title: _link_main
+    field_type: text
+    table_name: platforms
+  - count: "3"
+    field_name: name
+    field_title: name
+    field_type: text
+    table_name: platforms
+id: "[id]"
+preview:
+  developer:
+    - - 1.developer.0
+      - "1"
+      - deva
+    - - 2.developer.0
+      - "2"
+      - devb
+  main:
+    - - "1"
+      - "1"
+      - "1"
+      - A Game
+      - 2015-01-01
+      - E
+      - Everyone
+    - - "2"
+      - "2"
+      - "2"
+      - B Game
+      - 2016-01-01
+      - E
+      - Everyone
+  platforms:
+    - - 1.platforms.0
+      - "1"
+      - PC
+    - - 2.platforms.0
+      - "2"
+      - Xbox
+    - - 2.platforms.1
+      - "2"
+      - Playstation
+
