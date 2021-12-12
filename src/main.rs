@@ -1,20 +1,29 @@
+mod buffered_byte_stream;
 use async_std::fs::File;
+use async_std::io::prelude::*;
 use async_std::io::{copy, BufReader, BufWriter};
+use buffered_byte_stream::BufferedBytesStream;
 use libflatterer::{flatten, flatten_from_jl, FlatFiles, Selector};
+use std::collections::HashMap;
 use std::fs::File as StdFile;
 use std::io::{copy as std_copy, BufReader as StdBufReader};
 use surf::http::{Method, Url};
 use tempfile::TempDir;
-use tide::prelude::*;
 use tide::{http, log, utils, Body, Request, Response, StatusCode};
 //use async_std::task;
+use csv::{Writer, Reader};
+use multer::Multipart;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::env::var;
 use std::path::PathBuf;
-use walkdir::WalkDir;
 use uuid::Uuid;
+use walkdir::WalkDir;
 
 #[derive(Deserialize, Debug, Clone)]
 struct Query {
     id: Option<String>,
+    output_format: Option<String>,
     file_url: Option<String>,
     array_key: Option<String>,
     json_lines: Option<bool>,
@@ -28,9 +37,7 @@ struct Query {
     schema_titles: Option<String>,
 }
 
-#[async_std::main]
-async fn main() -> tide::Result<()> {
-    env_logger::init();
+fn get_app() -> tide::Server<()> {
     let mut app = tide::new();
 
     app.with(utils::After(|res: Response| async move {
@@ -44,46 +51,93 @@ async fn main() -> tide::Result<()> {
         Ok(res)
     }));
 
-    app.at("/api/zip").get(api);
-    app.at("/api/zip").post(api);
-    app.at("/api/download_file").post(download_file);
-    app.listen("127.0.0.1:8080").await?;
+    app.at("/api/convert").get(convert);
+    app.at("/api/convert").post(convert);
+    app.at("/api/convert").put(convert);
+    //    app.at("/api/download_file").post(download_file);
+    app
+}
+
+#[async_std::main]
+async fn main() -> tide::Result<()> {
+    env_logger::init();
+    clean_tmp()?;
+
+    let app = get_app();
+
+    let port = if let Ok(port) = var("HTTP_PORT") {
+        port
+    } else {
+        "8080".to_string()
+    };
+    let host = if let Ok(host) = var("HTTP_HOST") {
+        host
+    } else {
+        "127.0.0.1".to_string()
+    };
+
+    app.listen(format!("{}:{}", host, port)).await?;
 
     Ok(())
 }
 
-async fn download_file(mut req: Request<()>) -> tide::Result<Response> {
-    let mut input: serde_json::Value = req.body_json().await?;
+//async fn download_file(mut req: Request<()>) -> tide::Result<Response> {
+//let mut input: Value = req.body_json().await?;
 
-    let url_string = if let Some(url) = input.get_mut("url") {
-        if let Some(url_string) = url.as_str() {
-            url_string.to_owned()
-        } else {"".to_string()}
-    } else {"".to_string()};
+//let url_string = if let Some(url) = input.get_mut("url") {
+//if let Some(url_string) = url.as_str() {
+//url_string.to_owned()
+//} else {"".to_string()}
+//} else {"".to_string()};
 
-    let download_value = download(url_string.clone()).await?;
+//let download_value = download(url_string.clone()).await?;
 
-    if download_value.get("error").is_some() {
-        let mut res = Response::new(StatusCode::BadRequest);
-        let body = Body::from_json(&download_value)?;
-        res.set_body(body);
-        return Ok(res)
-    }
+//if download_value.get("error").is_some() {
+//let mut res = Response::new(StatusCode::BadRequest);
+//let body = Body::from_json(&download_value)?;
+//res.set_body(body);
+//return Ok(res)
+//}
 
-    let mut res = Response::new(StatusCode::Ok);
-    let body = Body::from_json(&download_value)?;
-    res.set_body(body);
+//let mut res = Response::new(StatusCode::Ok);
+//let body = Body::from_json(&download_value)?;
+//res.set_body(body);
 
-    Ok(res)
+//Ok(res)
+//}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct FieldsRecord {
+    table_name: String,
+    field_name: String,
+    field_type: String,
+    field_title: Option<String>,
 }
 
-async fn download(url_string: String) -> tide::Result<serde_json::Value> {
+async fn get_fields_file(value: Value, tmp_dir_path: PathBuf) -> tide::Result<String> {
+    let path = tmp_dir_path.join("fields.csv");
+
+    let mut csv_writer = Writer::from_path(&path)?;
+
+    if let Some(fields_value) = value.get("fields") {
+        if let Some(fields_array) = fields_value.as_array() {
+            for field in fields_array {
+                let field_struct: FieldsRecord = serde_json::from_value(field.clone())?;
+                csv_writer.serialize(field_struct)?;
+            }
+        }
+    }
+
+    Ok(path.to_string_lossy().to_string())
+}
+
+async fn download(url_string: String) -> tide::Result<Value> {
     let uuid = Uuid::new_v4().to_hyphenated();
     let tmp_dir = format!("/tmp/flatterer-{}", uuid);
     async_std::fs::create_dir(&tmp_dir).await?;
 
     if !url_string.starts_with("http") {
-        return Ok(serde_json::json!({"error": "`url` is empty or does not start with `http`"}))
+        return Ok(json!({"error": "`url` is empty or does not start with `http`"}));
     }
 
     let url = Url::parse(&url_string)?;
@@ -93,7 +147,9 @@ async fn download(url_string: String) -> tide::Result<serde_json::Value> {
     let file_response = client.send(req).await?;
 
     if !file_response.status().is_success() {
-        return Ok(serde_json::json!({"error": "file download failed due to bad request status code`", "status_code": file_response.status().to_string()}))
+        return Ok(
+            json!({"error": "file download failed due to bad request status code`", "status_code": file_response.status().to_string()}),
+        );
     }
 
     let download_file = format!("{}/download.json", tmp_dir);
@@ -102,59 +158,196 @@ async fn download(url_string: String) -> tide::Result<serde_json::Value> {
 
     copy(file_response, writer).await?;
 
-    Ok(serde_json::json!({"id": uuid.to_string ()}))
+    Ok(json!({"id": uuid.to_string ()}))
 }
 
-async fn api(req: Request<()>) -> tide::Result<Response> {
+async fn multipart_upload(req: Request<()>, multipart_boundry: String) -> tide::Result<Value> {
+    let uuid = Uuid::new_v4().to_hyphenated();
+    let tmp_dir = format!("/tmp/flatterer-{}", uuid);
+    async_std::fs::create_dir(&tmp_dir).await?;
+
+    let body_stream = BufferedBytesStream { inner: req };
+
+    let mut multipart = Multipart::new(body_stream, multipart_boundry.clone());
+
+    let uuid = Uuid::new_v4().to_hyphenated();
+    let tmp_dir = format!("/tmp/flatterer-{}", uuid);
+    async_std::fs::create_dir(&tmp_dir).await?;
+
+    let download_file = format!("/tmp/flatterer-{}/download.json", uuid);
+
+    let mut found_file = false;
+
+    while let Some(mut field) = multipart.next_field().await? {
+        if field.name() != Some("file") {
+            continue;
+        }
+        let mut output = File::create(&download_file).await?;
+
+        while let Some(chunk) = field.chunk().await? {
+            output.write(&chunk).await?;
+        }
+        output.flush().await?;
+        found_file = true;
+    }
+
+    if !found_file {
+        return Ok(json!({"error": "form field `file` not found"}));
+    }
+
+    Ok(json!({"id": uuid.to_string ()}))
+}
+
+async fn json_request(req: Request<()>) -> tide::Result<Value> {
+    let uuid = Uuid::new_v4().to_hyphenated();
+    let tmp_dir = format!("/tmp/flatterer-{}", uuid);
+    async_std::fs::create_dir(&tmp_dir).await?;
+
+    let download_file = format!("/tmp/flatterer-{}/download.json", uuid);
+
+    let output = File::create(&download_file).await?;
+
+    copy(req, output).await?;
+
+    Ok(json!({"id": uuid.to_string ()}))
+}
+
+fn clean_tmp() -> tide::Result<()>{
+    for entry in WalkDir::new("/tmp/").min_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok()){
+            if !entry.file_name().to_string_lossy().starts_with("flatterer-") {continue}
+            if entry.metadata()?.modified()?.elapsed()?.as_secs() > 3600 {
+                std::fs::remove_dir_all(&entry.into_path())?;
+            }
+        }
+    Ok(())
+}
+
+async fn convert(mut req: Request<()>) -> tide::Result<Response> {
+    clean_tmp()?;
     let query: Query = req.query()?;
     let tmp_dir = TempDir::new()?;
     let tmp_dir_path = tmp_dir.path();
     let output_path = tmp_dir_path.join("output");
 
-    let mut download_file: String = "".to_string();
+    let mut multipart_boundry = "".to_string();
+    let mut content_type = "".to_string();
 
-    if let Some(file_url) = &query.file_url {
-        let download_value = download(file_url.clone()).await?;
-        if let Some(id) = download_value.get("id") {
-            if let Some(id_string) = id.as_str() {
-                download_file = format!("/tmp/flatterer-{}/download.json", id_string);
+    if let Some(mime) = req.content_type() {
+        content_type = mime.essence().to_string();
+        if content_type == "multipart/form-data" {
+            if let Some(boundry) = mime.param("boundary") {
+                multipart_boundry = boundry.to_string()
             }
         }
-        else {
-            let mut res = Response::new(StatusCode::BadRequest);
-            let body = Body::from_json(&download_value)?;
-            res.set_body(body);
-            return Ok(res)
-        }
-    } else if let Some(id) = &query.id {
-        download_file = format!("/tmp/flatterer-{}/download.json", id);
-        if !std::path::Path::new(&download_file).exists() {
-            let mut res = Response::new(StatusCode::BadRequest);
-            let body = Body::from_json(&serde_json::json!({"error": "id does not exist, you may need to ask you file to be downloaded again or to upload the file again."}))?;
-            res.set_body(body);
-            return Ok(res)
-        }
-    } else {
-        let mut res = Response::new(StatusCode::BadRequest);
-        let body = Body::from_json(&serde_json::json!({"error": "need to supply either an id or a file_url"}))?;
-        res.set_body(body);
-        return Ok(res)
     }
 
-    let output_path_to_move = output_path.clone();
-    let query_to_move = query.clone();
-    let download_file_to_move = download_file.clone();
+    let mut fields_file = "".to_string();
 
-    //task::spawn_blocking(move || {
-    run_flatterer(query_to_move, download_file_to_move, output_path_to_move)?;
-    //}).await?;
+    let mut json_output = if let Some(file_url) = &query.file_url {
+        if content_type == "application/json" {
+            fields_file =
+                get_fields_file(req.body_json().await?, tmp_dir_path.to_path_buf()).await?
+        };
+        download(file_url.clone()).await?
+    } else if let Some(id) = &query.id {
+        if content_type == "application/json" {
+            fields_file =
+                get_fields_file(req.body_json().await?, tmp_dir_path.to_path_buf()).await?
+        };
+        json!({ "id": id })
+    } else if !multipart_boundry.is_empty() {
+        multipart_upload(req, multipart_boundry).await?
+    } else if content_type == "application/json" {
+        json_request(req).await?
+    } else {
+        json!({"error": "need to supply either an id or filename or supply data in request body"})
+    };
 
-    let output_path_to_move = output_path.clone();
+    let mut download_file = "".to_string();
+    let mut id = "".to_string();
+
+    if let Some(id_value) = json_output.get("id") {
+        if let Some(id_string) = id_value.as_str() {
+            id = id_string.to_string();
+            download_file = format!("/tmp/flatterer-{}/download.json", id_string);
+            if !std::path::Path::new(&download_file).exists() {
+                json_output = json!({"error": "id does not exist, you may need to ask you file to be downloaded again or to upload the file again."})
+            }
+        }
+    }
+
+    if let Some(_) = json_output.get("error") {
+        let mut res = Response::new(StatusCode::BadRequest);
+        let body = Body::from_json(&json_output)?;
+        res.set_body(body);
+        return Ok(res);
+    }
+
+    run_flatterer(
+        query.clone(),
+        fields_file,
+        download_file.clone(),
+        output_path.clone(),
+    )?;
+
     let tmp_dir_path_to_move = tmp_dir_path.to_path_buf();
 
-    //task::spawn_blocking(move || {
-    zip_output(output_path_to_move, tmp_dir_path_to_move.to_path_buf())?;
-    //}).await?;
+    let output_format = query.output_format.unwrap_or("zip".to_string());
+
+    if output_format == "fields" {
+        let fields_value = fields_output(output_path.clone())?;
+        let output = json!({"id": id, "fields": fields_value});
+        let mut res = Response::new(StatusCode::Ok);
+        let body = Body::from_json(&output)?;
+        res.set_body(body);
+        return Ok(res);
+    }
+
+    if output_format == "preview" {
+        let fields_value = fields_output(output_path.clone())?;
+        let preview_value = preview_output(output_path.clone()).await?;
+        let output = json!({"id": id, "fields": fields_value, "preview": preview_value});
+        let mut res = Response::new(StatusCode::Ok);
+        let body = Body::from_json(&output)?;
+        res.set_body(body);
+        return Ok(res);
+    }
+
+    if output_format == "xlsx" {
+        let xlsx_file = File::open(output_path.join("output.xlsx")).await?;
+        let xlsx_file_buf = BufReader::new(xlsx_file);
+
+        let mut res = Response::new(StatusCode::Ok);
+        let body = Body::from_reader(xlsx_file_buf, None);
+        res.set_body(body);
+        res.set_content_type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.append_header(
+            "Content-Disposition",
+            format!("attachment; filename=\"{}.xlsx\"", "flatterer-output"),
+        );
+        return Ok(res);
+    }
+
+    if output_format == "csv" {
+        let main_table_name = query.main_table_name.unwrap_or_else(|| "main".to_string());
+
+        let csv_file = File::open(output_path.join(format!("csv/{}.csv", main_table_name))).await?;
+        let csv_file_buf = BufReader::new(csv_file);
+
+        let mut res = Response::new(StatusCode::Ok);
+        let body = Body::from_reader(csv_file_buf, None);
+        res.set_body(body);
+        res.set_content_type("text/csv");
+        res.append_header(
+            "Content-Disposition",
+            format!("attachment; filename=\"{}.csv\"", "flatterer-output"),
+        );
+        return Ok(res);
+    }
+
+    zip_output(output_path.clone(), tmp_dir_path_to_move.to_path_buf())?;
 
     let zip_file = tmp_dir_path.join("export.zip");
     let mut res = Response::new(StatusCode::Ok);
@@ -172,10 +365,33 @@ async fn api(req: Request<()>) -> tide::Result<Response> {
     Ok(res)
 }
 
-fn run_flatterer(query: Query, download_file: String, output_path: PathBuf) -> tide::Result<()> {
+fn run_flatterer(
+    mut query: Query,
+    fields_file: String,
+    download_file: String,
+    output_path: PathBuf,
+) -> tide::Result<()> {
     let file = StdFile::open(download_file)?;
     let reader = StdBufReader::new(file);
-    let flat_files = FlatFiles::new(
+
+    let output_format = query.output_format.unwrap_or("zip".to_string());
+
+    if output_format != "zip" {
+        query.csv = Some(false);
+        query.xlsx = Some(false)
+    }
+
+    if output_format == "xlsx" {
+        query.xlsx = Some(true)
+    }
+    if output_format == "csv" {
+        query.csv = Some(true);
+    }
+    if output_format == "preview" {
+        query.csv = Some(true);
+    }
+
+    let mut flat_files = FlatFiles::new(
         output_path.to_string_lossy().to_string(),
         query.csv.unwrap_or(true),
         query.xlsx.unwrap_or(false),
@@ -189,6 +405,14 @@ fn run_flatterer(query: Query, download_file: String, output_path: PathBuf) -> t
         query.schema_titles.unwrap_or_else(|| "_".to_string()),
     )
     .unwrap();
+
+    if output_format == "preview" {
+        flat_files.preview = 10;
+    }
+
+    if !fields_file.is_empty() {
+        flat_files.use_fields_csv(fields_file, true)?;
+    }
 
     if query.json_lines.unwrap_or(false) {
         flatten_from_jl(
@@ -218,14 +442,11 @@ fn zip_output(output_path: PathBuf, tmp_dir_path: PathBuf) -> tide::Result<()> {
 
     let options = zip::write::FileOptions::default();
 
-    for entry in WalkDir::new(output_path.clone())
+    for entry in WalkDir::new(output_path.clone()).min_depth(1)
         .into_iter()
         .filter_map(|e| e.ok())
     {
         let path = entry.path();
-        if path == output_path {
-            continue;
-        }
 
         if path.is_dir() {
             zip.add_directory(
@@ -242,4 +463,108 @@ fn zip_output(output_path: PathBuf, tmp_dir_path: PathBuf) -> tide::Result<()> {
         }
     }
     Ok(())
+}
+
+fn fields_output(output_path: PathBuf) -> tide::Result<Vec<HashMap<String, String>>> {
+    let mut csv_reader = Reader::from_path(output_path.join("fields.csv"))?;
+
+    let mut all_fields = vec![];
+
+    for result in csv_reader.deserialize() {
+        let record: HashMap<String, String> = result?;
+        all_fields.push(record)
+    }
+    Ok(all_fields)
+}
+
+async fn preview_output(output_path: PathBuf) -> tide::Result<Value> {
+
+    let mut previews = HashMap::new();
+
+    for entry in WalkDir::new(output_path.join("csv")).min_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let mut rows = vec![];
+
+        let path = entry.path();
+        let table = path.file_stem().unwrap().to_string_lossy().to_string(); //we know the csv files have a stem.
+
+        let mut reader = Reader::from_path(path)?;
+        for row in reader.deserialize() {
+            let row: Vec<String> = row?; 
+            rows.push(row)
+        }
+        previews.insert(table, rows);
+    }
+    Ok(serde_json::to_value(previews)?)
+}
+
+#[cfg(test)]
+mod tests {
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+    use async_std::fs::read_to_string;
+    use tide_testing::TideTestingExt;
+
+    #[test]
+    fn test_remove_field() {
+        async_std::task::block_on(async {
+            let app = get_app();
+
+            let body_string = read_to_string("fixtures/prize.json").await.unwrap();
+
+            let mut response_body: serde_json::value::Value = app
+                .post("/api/convert?output_format=fields&array_key=prizes")
+                .body(tide::Body::from_string(body_string))
+                .content_type("application/json")
+                .recv_json()
+                .await
+                .unwrap();
+
+            insta::with_settings!({sort_maps => true}, {
+                insta::assert_yaml_snapshot!(&response_body, {".id" => "[id]"});
+            });
+
+            let field_array = response_body["fields"].as_array_mut().unwrap();
+            field_array.pop();
+
+            let response_body_after_fields: serde_json::value::Value = app
+                .post(format!(
+                    "/api/convert?output_format=fields&array_key=prizes&id={}",
+                    response_body["id"].as_str().unwrap()
+                ))
+                .body(tide::Body::from_json(&response_body).unwrap())
+                .content_type("application/json")
+                .recv_json()
+                .await
+                .unwrap();
+
+            insta::with_settings!({sort_maps => true}, {
+                insta::assert_yaml_snapshot!(&response_body_after_fields, {".id" => "[id]"});
+            });
+        })
+    }
+
+    #[test]
+    fn test_preview_output() {
+        async_std::task::block_on(async {
+            let app = get_app();
+
+            let body_string = read_to_string("fixtures/basic.json").await.unwrap();
+
+            let response_body: serde_json::value::Value = app
+                .post("/api/convert?output_format=preview")
+                .body(tide::Body::from_string(body_string))
+                .content_type("application/json")
+                .recv_json()
+                .await
+                .unwrap();
+
+            insta::with_settings!({sort_maps => true}, {
+                insta::assert_yaml_snapshot!(&response_body, {".id" => "[id]"});
+            });
+
+        })
+    }
 }
