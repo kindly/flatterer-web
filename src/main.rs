@@ -1,12 +1,12 @@
 mod buffered_byte_stream;
 use async_std::fs::File;
-//use async_std::io::prelude::*;
+use async_std::io::prelude::*;
 use async_std::io::{copy, BufReader, BufWriter};
 use buffered_byte_stream::BufferedBytesStream;
 use libflatterer::{flatten, flatten_from_jl, FlatFiles, Selector};
 use std::collections::HashMap;
 use std::fs::File as StdFile;
-use std::io::{copy as std_copy, BufReader as StdBufReader, Write};
+use std::io::{copy as std_copy, BufReader as StdBufReader};
 use surf::http::{Method, Url};
 use tempfile::TempDir;
 use tide::{http, log, utils, Body, Request, Response, StatusCode};
@@ -178,8 +178,7 @@ async fn multipart_upload(req: Request<()>, multipart_boundry: String) -> tide::
 
     let mut found_file = false;
 
-    //let mut output = File::create(&download_file).await?;
-    let mut output = StdFile::create(&download_file)?;
+    let mut output = File::create(&download_file).await?;
 
     while let Some(mut field) = multipart.next_field().await? {
 
@@ -187,10 +186,8 @@ async fn multipart_upload(req: Request<()>, multipart_boundry: String) -> tide::
             found_file = true;
         }
 
-
         while let Some(chunk) = field.chunk().await? {
-            //output.write(&chunk).await?;
-            output.write(&chunk)?;
+            output.write_all(&chunk).await?;
         }
     }
 
