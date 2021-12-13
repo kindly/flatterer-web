@@ -65,7 +65,7 @@ async fn main() -> tide::Result<()> {
 
     let app = get_app();
 
-    let port = if let Ok(port) = var("HTTP_PORT") {
+    let port = if let Ok(port) = var("PORT") {
         port
     } else {
         "8080".to_string()
