@@ -1,2 +1,1 @@
-web: ASYNC_STD_THREAD_COUNT=5 ./target/release/flatterer-web
-release: apt install llvm-dev libclang-dev clang
+web: RUST_LOG=info HOST=0.0.0.0 PORT=$PORT ./target/release/flatterer-web

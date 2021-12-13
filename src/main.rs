@@ -70,13 +70,13 @@ async fn main() -> tide::Result<()> {
     } else {
         "8080".to_string()
     };
-    let host = if let Ok(host) = var("HTTP_HOST") {
+    let host = if let Ok(host) = var("HOST") {
         host
     } else {
         "127.0.0.1".to_string()
     };
 
-    app.listen(format!("{}:{}", host, port)).await?;
+    app.listen(format!("http://{}:{}", host, port)).await?;
 
     Ok(())
 }
