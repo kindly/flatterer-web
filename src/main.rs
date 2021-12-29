@@ -285,12 +285,18 @@ async fn convert(mut req: Request<()>) -> tide::Result<Response> {
         return Ok(res);
     }
 
-    run_flatterer(
-        query.clone(),
-        fields_file,
-        download_file.clone(),
-        output_path.clone(),
-    )?;
+    let output_path_copy = output_path.clone();
+    let query_copy = query.clone();
+
+    async_std::task::spawn_blocking(|| -> tide::Result<()>{
+        run_flatterer(
+            query_copy,
+            fields_file,
+            download_file,
+            output_path_copy,
+        )?;
+        Ok(())
+    }).await?;
 
     let tmp_dir_path_to_move = tmp_dir_path.to_path_buf();
 
@@ -347,7 +353,10 @@ async fn convert(mut req: Request<()>) -> tide::Result<Response> {
         return Ok(res);
     }
 
-    zip_output(output_path.clone(), tmp_dir_path_to_move.to_path_buf())?;
+    async_std::task::spawn_blocking(move || -> tide::Result<()> {
+       zip_output(output_path.clone(), tmp_dir_path_to_move.to_path_buf())?;
+       Ok(())
+    }).await?;
 
     let zip_file = tmp_dir_path.join("export.zip");
     let mut res = Response::new(StatusCode::Ok);
