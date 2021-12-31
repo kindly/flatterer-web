@@ -37,7 +37,7 @@ struct Query {
     schema_titles: Option<String>,
 }
 
-fn get_app() -> tide::Server<()> {
+fn get_app() -> tide::Result<tide::Server<()>> {
     let mut app = tide::new();
 
     app.with(utils::After(|res: Response| async move {
@@ -54,8 +54,10 @@ fn get_app() -> tide::Server<()> {
     app.at("/api/convert").get(convert);
     app.at("/api/convert").post(convert);
     app.at("/api/convert").put(convert);
-    //    app.at("/api/download_file").post(download_file);
-    app
+    app.at("/").serve_file("ui/dist/index.html")?;
+    app.at("/").serve_dir("ui/dist/")?;
+
+    Ok(app)
 }
 
 #[async_std::main]
@@ -63,7 +65,7 @@ async fn main() -> tide::Result<()> {
     env_logger::init();
     clean_tmp()?;
 
-    let app = get_app();
+    let app = get_app()?;
 
     let port = if let Ok(port) = var("PORT") {
         port
