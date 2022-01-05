@@ -10,11 +10,6 @@ fields:
     field_type: text
     table_name: main
   - count: "658"
-    field_name: _link_main
-    field_title: _link_main
-    field_type: text
-    table_name: main
-  - count: "658"
     field_name: year
     field_title: year
     field_type: text

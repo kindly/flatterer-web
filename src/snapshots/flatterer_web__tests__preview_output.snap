@@ -10,11 +10,6 @@ fields:
     field_type: text
     table_name: main
   - count: "2"
-    field_name: _link_main
-    field_title: _link_main
-    field_type: text
-    table_name: main
-  - count: "2"
     field_name: id
     field_title: id
     field_type: number
@@ -72,35 +67,33 @@ fields:
 id: "[id]"
 preview:
   developer:
+    - - 0.developer.0
+      - "0"
+      - deva
     - - 1.developer.0
       - "1"
-      - deva
-    - - 2.developer.0
-      - "2"
       - devb
   main:
-    - - "1"
-      - "1"
+    - - "0"
       - "1"
       - A Game
       - 2015-01-01
       - E
       - Everyone
-    - - "2"
-      - "2"
+    - - "1"
       - "2"
       - B Game
       - 2016-01-01
       - E
       - Everyone
   platforms:
+    - - 0.platforms.0
+      - "0"
+      - PC
     - - 1.platforms.0
       - "1"
-      - PC
-    - - 2.platforms.0
-      - "2"
       - Xbox
-    - - 2.platforms.1
-      - "2"
+    - - 1.platforms.1
+      - "1"
       - Playstation
 

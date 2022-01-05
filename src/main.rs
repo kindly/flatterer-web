@@ -11,7 +11,7 @@ use surf::http::{Method, Url};
 use tempfile::TempDir;
 use tide::{http, log, utils, Body, Request, Response, StatusCode};
 //use async_std::task;
-use csv::{Writer, Reader};
+use csv::{Reader, Writer};
 use multer::Multipart;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -32,7 +32,7 @@ struct Query {
     main_table_name: Option<String>,
     inline_one_to_one: Option<bool>,
     json_schema: Option<String>,
-    table_schema: Option<String>,
+    table_prefix: Option<String>,
     path_seperator: Option<String>,
     schema_titles: Option<String>,
 }
@@ -83,30 +83,6 @@ async fn main() -> tide::Result<()> {
     Ok(())
 }
 
-//async fn download_file(mut req: Request<()>) -> tide::Result<Response> {
-//let mut input: Value = req.body_json().await?;
-
-//let url_string = if let Some(url) = input.get_mut("url") {
-//if let Some(url_string) = url.as_str() {
-//url_string.to_owned()
-//} else {"".to_string()}
-//} else {"".to_string()};
-
-//let download_value = download(url_string.clone()).await?;
-
-//if download_value.get("error").is_some() {
-//let mut res = Response::new(StatusCode::BadRequest);
-//let body = Body::from_json(&download_value)?;
-//res.set_body(body);
-//return Ok(res)
-//}
-
-//let mut res = Response::new(StatusCode::Ok);
-//let body = Body::from_json(&download_value)?;
-//res.set_body(body);
-
-//Ok(res)
-//}
 
 #[derive(Debug, Deserialize, Serialize)]
 struct FieldsRecord {
@@ -183,7 +159,6 @@ async fn multipart_upload(req: Request<()>, multipart_boundry: String) -> tide::
     let mut output = File::create(&download_file).await?;
 
     while let Some(mut field) = multipart.next_field().await? {
-
         if field.name() == Some("file") {
             found_file = true;
         }
@@ -214,15 +189,23 @@ async fn json_request(req: Request<()>) -> tide::Result<Value> {
     Ok(json!({"id": uuid.to_string ()}))
 }
 
-fn clean_tmp() -> tide::Result<()>{
-    for entry in WalkDir::new("/tmp/").min_depth(1)
+fn clean_tmp() -> tide::Result<()> {
+    for entry in WalkDir::new("/tmp/")
+        .min_depth(1)
         .into_iter()
-        .filter_map(|e| e.ok()){
-            if !entry.file_name().to_string_lossy().starts_with("flatterer-") {continue}
-            if entry.metadata()?.modified()?.elapsed()?.as_secs() > 3600 {
-                std::fs::remove_dir_all(&entry.into_path())?;
-            }
+        .filter_map(|e| e.ok())
+    {
+        if !entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with("flatterer-")
+        {
+            continue;
         }
+        if entry.metadata()?.modified()?.elapsed()?.as_secs() > 3600 {
+            std::fs::remove_dir_all(&entry.into_path())?;
+        }
+    }
     Ok(())
 }
 
@@ -289,16 +272,26 @@ async fn convert(mut req: Request<()>) -> tide::Result<Response> {
 
     let output_path_copy = output_path.clone();
     let query_copy = query.clone();
+    let download_file_copy = download_file.clone();
 
-    async_std::task::spawn_blocking(|| -> tide::Result<()>{
-        run_flatterer(
-            query_copy,
-            fields_file,
-            download_file,
-            output_path_copy,
-        )?;
+    let flatterer_result = async_std::task::spawn_blocking(|| -> tide::Result<()> {
+        run_flatterer(query_copy, fields_file, download_file_copy, output_path_copy)?;
         Ok(())
-    }).await?;
+    })
+    .await;
+
+    let mut file = File::open(download_file).await?;
+    let mut buf = vec![0;1024];
+    let n = file.read(&mut buf).await?;
+    let start = String::from_utf8_lossy(&buf[..n]);        
+
+    if let Err(err) = flatterer_result {
+        let mut res = Response::new(StatusCode::BadRequest);
+        let output = json!({"id": id, "error": err.to_string(), "start": start});
+        let body = Body::from_json(&output)?;
+        res.set_body(body);
+        return Ok(res);
+    }
 
     let tmp_dir_path_to_move = tmp_dir_path.to_path_buf();
 
@@ -316,7 +309,7 @@ async fn convert(mut req: Request<()>) -> tide::Result<Response> {
     if output_format == "preview" {
         let fields_value = fields_output(output_path.clone())?;
         let preview_value = preview_output(output_path.clone()).await?;
-        let output = json!({"id": id, "fields": fields_value, "preview": preview_value});
+        let output = json!({"id": id, "fields": fields_value, "preview": preview_value, "start": start});
         let mut res = Response::new(StatusCode::Ok);
         let body = Body::from_json(&output)?;
         res.set_body(body);
@@ -356,9 +349,10 @@ async fn convert(mut req: Request<()>) -> tide::Result<Response> {
     }
 
     async_std::task::spawn_blocking(move || -> tide::Result<()> {
-       zip_output(output_path.clone(), tmp_dir_path_to_move.to_path_buf())?;
-       Ok(())
-    }).await?;
+        zip_output(output_path.clone(), tmp_dir_path_to_move.to_path_buf())?;
+        Ok(())
+    })
+    .await?;
 
     let zip_file = tmp_dir_path.join("export.zip");
     let mut res = Response::new(StatusCode::Ok);
@@ -411,11 +405,10 @@ fn run_flatterer(
         vec![], // list of json paths to omit object as if it was array
         query.inline_one_to_one.unwrap_or(false),
         query.json_schema.unwrap_or_else(|| "".to_string()),
-        query.table_schema.unwrap_or_else(|| "".to_string()),
+        query.table_prefix.unwrap_or_else(|| "".to_string()),
         query.path_seperator.unwrap_or_else(|| "_".to_string()),
-        query.schema_titles.unwrap_or_else(|| "_".to_string()),
-    )
-    .unwrap();
+        query.schema_titles.unwrap_or_else(|| "".to_string()),
+    )?;
 
     if output_format == "preview" {
         flat_files.preview = 10;
@@ -453,7 +446,8 @@ fn zip_output(output_path: PathBuf, tmp_dir_path: PathBuf) -> tide::Result<()> {
 
     let options = zip::write::FileOptions::default();
 
-    for entry in WalkDir::new(output_path.clone()).min_depth(1)
+    for entry in WalkDir::new(output_path.clone())
+        .min_depth(1)
         .into_iter()
         .filter_map(|e| e.ok())
     {
@@ -489,10 +483,10 @@ fn fields_output(output_path: PathBuf) -> tide::Result<Vec<HashMap<String, Strin
 }
 
 async fn preview_output(output_path: PathBuf) -> tide::Result<Value> {
-
     let mut previews = HashMap::new();
 
-    for entry in WalkDir::new(output_path.join("csv")).min_depth(1)
+    for entry in WalkDir::new(output_path.join("csv"))
+        .min_depth(1)
         .into_iter()
         .filter_map(|e| e.ok())
     {
@@ -503,7 +497,7 @@ async fn preview_output(output_path: PathBuf) -> tide::Result<Value> {
 
         let mut reader = Reader::from_path(path)?;
         for row in reader.deserialize() {
-            let row: Vec<String> = row?; 
+            let row: Vec<String> = row?;
             rows.push(row)
         }
         previews.insert(table, rows);
@@ -521,7 +515,7 @@ mod tests {
     #[test]
     fn test_remove_field() {
         async_std::task::block_on(async {
-            let app = get_app();
+            let app = get_app().unwrap();
 
             let body_string = read_to_string("fixtures/prize.json").await.unwrap();
 
@@ -560,7 +554,7 @@ mod tests {
     #[test]
     fn test_preview_output() {
         async_std::task::block_on(async {
-            let app = get_app();
+            let app = get_app().unwrap();
 
             let body_string = read_to_string("fixtures/basic.json").await.unwrap();
 
@@ -575,7 +569,6 @@ mod tests {
             insta::with_settings!({sort_maps => true}, {
                 insta::assert_yaml_snapshot!(&response_body, {".id" => "[id]"});
             });
-
         })
     }
 }
