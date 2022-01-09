@@ -1,7 +1,24 @@
 <template>
   <v-container>
     <v-card>
-      <v-card-title>JSON Input</v-card-title>
+      <v-row>
+        <v-col>
+          <v-card-title id="json-input" v-intersect="onIntersect"
+            >JSON Input</v-card-title
+          >
+        </v-col>
+        <v-col>
+          <v-container>
+            <v-btn
+              class="float-right"
+              color="deep-orange lighten-4"
+              :disabled="formState === 'new'"
+              @click="reset"
+              >reset all</v-btn
+            >
+          </v-container>
+        </v-col>
+      </v-row>
       <v-container>
         <v-expansion-panels v-model="panel">
           <v-expansion-panel>
@@ -36,7 +53,7 @@
             </v-expansion-panel-content>
           </v-expansion-panel>
           <v-expansion-panel>
-            <v-expansion-panel-header>Paste </v-expansion-panel-header>
+            <v-expansion-panel-header>Paste</v-expansion-panel-header>
             <v-expansion-panel-content>
               <v-textarea
                 outlined
@@ -52,7 +69,7 @@
           <v-container>
             <v-row>
               <v-col>
-                <h3>Options</h3>
+                <h3 id="options" v-intersect="onIntersect">Options</h3>
               </v-col>
             </v-row>
             <v-row class="mt-0">
@@ -161,13 +178,19 @@
       <v-container>
         <v-btn
           color="success"
-          :disabled="submitButtonDisabled"
+          :disabled="submitButtonDisabled || formState == 'submitted'"
           @click="preview"
           >{{ submitButtonText }}</v-btn
         >
+        <v-progress-circular
+          indeterminate
+          color="grey"
+          class="ml-4"
+          v-if="!apiStatus && formState == 'submitted'"
+        ></v-progress-circular>
       </v-container>
     </v-card>
-    <v-card class="mt-4" v-if="apiError">
+    <v-card id="error" v-intersect="onIntersect" class="mt-4" v-if="apiError">
       <v-alert prominent type="error">
         Server reported the following error:
         <br />
@@ -177,7 +200,9 @@
       </v-alert>
     </v-card>
     <v-card class="mt-4" v-if="fileStart">
-      <v-card-title>Input data preview</v-card-title>
+      <v-card-title id="input-data-preview" v-intersect="onIntersect"
+        >Input data preview</v-card-title
+      >
       <v-card-text
         >As the transformation failed, here is the initial part of the input
         file to check if it is as you expect:
@@ -186,18 +211,57 @@
         </v-sheet>
       </v-card-text>
     </v-card>
-    <pre>
-      {{ submitType }}
-      {{ apiError }}
-      {{ apiResponse }}
-    </pre>
+
+    <v-card class="mt-4" v-if="apiResponse" id="success">
+      <v-alert type="success">File Processed Successfully!</v-alert>
+    </v-card>
+
+    <v-card class="mt-4" v-if="apiResponse">
+      <v-card-title id="tables-preview" v-intersect="onIntersect"
+        >Tables Preview</v-card-title
+      >
+      <v-card-text>
+        Below is a preview of the tables that will be created.
+      </v-card-text>
+      <v-container v-for="table in apiResponse.preview" :key="table.table_name">
+        <v-card :id="'table-' + table.table_name" v-intersect="onIntersect">
+          <v-card-title class="subtitle-1">
+            {{ table.table_name }}
+          </v-card-title>
+          <v-data-table
+            :headers="fieldHeaders"
+            :items="table.fields"
+            item-key="field_name"
+            disable-pagination
+            hide-default-footer
+          ></v-data-table>
+        </v-card>
+      </v-container>
+    </v-card>
+
+    <v-card class="mt-4" v-if="apiResponse" id="download">
+      <v-container>
+        <v-row>
+          <v-col>
+            <v-btn color="success" :href="generateDownload('zip')"
+              >Download Full Zip</v-btn
+            >
+            <v-btn color="success" :href="generateDownload('xlsx')" class="ml-8"
+              >Download XLSX</v-btn
+            >
+            <v-btn color="success" :href="generateDownload('csv')" class="ml-8"
+              >Download {{ main_table_name || "main" }} table as CSV</v-btn
+            >
+          </v-col>
+        </v-row>
+      </v-container>
+    </v-card>
   </v-container>
 </template>
 
 <script>
-export default {
-  name: "Home",
-  data: () => ({
+function defaultData() {
+  return {
     panel: 0,
     fileUpload: null,
     url: "",
@@ -212,12 +276,71 @@ export default {
     main_table_name: "",
     inline_one_to_one: false,
 
+    id: "",
+    formState: "new",
     fileStart: "",
     submitType: "",
-    apiError: null,
+    apiError: "",
     apiResponse: null,
-  }),
+    apiStatus: null,
+
+    fieldHeaders: [
+      { text: "Field Name", value: "field_title" },
+      { text: "Field Type", value: "field_type" },
+      { text: "Row Count", value: "count" },
+      { text: "Value in first row", value: "row 0" },
+      { text: "Value in second row", value: "row 1" },
+      { text: "Value in third row", value: "row 2" },
+    ],
+  };
+}
+
+export default {
+  name: "Home",
+  data: defaultData,
+  watch: {
+    apiError(newError) {
+      this.$store.commit("setSection", {
+        name: "error",
+        value: newError ? true : false,
+      });
+    },
+    apiResponse(newResponse) {
+      let value = false;
+      if (newResponse) {
+        value = newResponse.preview.map((value) => {
+          return value.table_name;
+        });
+      }
+      this.$store.commit("setSection", { name: "tables", value });
+    },
+    formChanged() {
+      this.formState = "changed";
+      this.id = "";
+      this.fileStart = "";
+      this.submitType = "";
+      this.apiError = "";
+      this.apiResponse = null;
+      this.apiStatus = null;
+    },
+  },
   computed: {
+    formChanged() {
+      return [
+        this.panel,
+        this.fileUpload,
+        this.url,
+        this.paste,
+        this.arrayPosition,
+        this.array_key,
+        this.path_seperator,
+        this.table_prefix,
+        this.schemaTitle,
+        this.json_schema,
+        this.main_table_name,
+        this.inline_one_to_one,
+      ];
+    },
     submitButtonText() {
       const lookup = {
         0: "Upload File and Preview",
@@ -236,6 +359,13 @@ export default {
     },
   },
   methods: {
+    reset() {
+      const data = defaultData();
+      Object.keys(data).forEach((k) => (this[k] = data[k]));
+      this.$nextTick(() => {
+        this.formState = "new";
+      });
+    },
     dataToParams() {
       let params = {};
       let schema_title = {
@@ -263,6 +393,14 @@ export default {
       }
       return params;
     },
+    generateDownload(downloadType) {
+      let params = this.dataToParams();
+      params.id = this.id;
+      params.output_format = downloadType;
+      let urlParams = new URLSearchParams(params).toString();
+
+      return "/api/convert?" + urlParams;
+    },
     preview() {
       let params = this.dataToParams();
       params.output_format = "preview";
@@ -280,6 +418,7 @@ export default {
       this.apiError = null;
       this.apiResponse = null;
       this.fileStart = null;
+      this.formState = "submitted";
       fetch("/api/convert?" + urlParams, requestData).then(
         function (response) {
           if (response.status != 200) {
@@ -289,13 +428,20 @@ export default {
                 this.apiError = data.error;
                 this.id = data.id;
                 this.fileStart = data.start;
+                this.$nextTick(() => {
+                  document.getElementById("error").scrollIntoView();
+                });
               }.bind(this)
             );
           } else {
+            this.apiStatus = 200;
             response.json().then(
               function (data) {
                 this.apiResponse = data;
                 this.id = data.id;
+                this.$nextTick(() => {
+                  document.getElementById("success").scrollIntoView();
+                });
               }.bind(this)
             );
           }
@@ -335,6 +481,11 @@ export default {
       };
       this.postToApi(urlParams, requestData);
       this.submitType = "paste";
+    },
+    onIntersect(entries) {
+      if (entries[0].isIntersecting) {
+        this.$store.commit("setListItem", entries[0].target.id);
+      }
     },
   },
 };

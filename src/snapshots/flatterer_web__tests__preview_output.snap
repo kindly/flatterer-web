@@ -3,97 +3,100 @@ source: src/main.rs
 expression: "&response_body"
 
 ---
-fields:
-  - count: "2"
-    field_name: _link
-    field_title: _link
-    field_type: text
-    table_name: main
-  - count: "2"
-    field_name: id
-    field_title: id
-    field_type: number
-    table_name: main
-  - count: "2"
-    field_name: title
-    field_title: title
-    field_type: text
-    table_name: main
-  - count: "2"
-    field_name: releaseDate
-    field_title: releaseDate
-    field_type: date
-    table_name: main
-  - count: "2"
-    field_name: rating_code
-    field_title: rating_code
-    field_type: text
-    table_name: main
-  - count: "2"
-    field_name: rating_name
-    field_title: rating_name
-    field_type: text
-    table_name: main
-  - count: "2"
-    field_name: _link
-    field_title: _link
-    field_type: text
-    table_name: developer
-  - count: "2"
-    field_name: _link_main
-    field_title: _link_main
-    field_type: text
-    table_name: developer
-  - count: "2"
-    field_name: name
-    field_title: name
-    field_type: text
-    table_name: developer
-  - count: "3"
-    field_name: _link
-    field_title: _link
-    field_type: text
-    table_name: platforms
-  - count: "3"
-    field_name: _link_main
-    field_title: _link_main
-    field_type: text
-    table_name: platforms
-  - count: "3"
-    field_name: name
-    field_title: name
-    field_type: text
-    table_name: platforms
 id: "[id]"
 preview:
-  developer:
-    - - 0.developer.0
-      - "0"
-      - deva
-    - - 1.developer.0
-      - "1"
-      - devb
-  main:
-    - - "0"
-      - "1"
-      - A Game
-      - 2015-01-01
-      - E
-      - Everyone
-    - - "1"
-      - "2"
-      - B Game
-      - 2016-01-01
-      - E
-      - Everyone
-  platforms:
-    - - 0.platforms.0
-      - "0"
-      - PC
-    - - 1.platforms.0
-      - "1"
-      - Xbox
-    - - 1.platforms.1
-      - "1"
-      - Playstation
+  - fields:
+      - count: "2"
+        field_name: _link
+        field_title: _link
+        field_type: text
+        row 0: "0"
+        row 1: "1"
+        table_name: main
+      - count: "2"
+        field_name: id
+        field_title: id
+        field_type: number
+        row 0: "1"
+        row 1: "2"
+        table_name: main
+      - count: "2"
+        field_name: title
+        field_title: title
+        field_type: text
+        row 0: A Game
+        row 1: B Game
+        table_name: main
+      - count: "2"
+        field_name: releaseDate
+        field_title: releaseDate
+        field_type: date
+        row 0: 2015-01-01
+        row 1: 2016-01-01
+        table_name: main
+      - count: "2"
+        field_name: rating_code
+        field_title: rating_code
+        field_type: text
+        row 0: E
+        row 1: E
+        table_name: main
+      - count: "2"
+        field_name: rating_name
+        field_title: rating_name
+        field_type: text
+        row 0: Everyone
+        row 1: Everyone
+        table_name: main
+    table_name: main
+  - fields:
+      - count: "2"
+        field_name: _link
+        field_title: _link
+        field_type: text
+        row 0: 0.developer.0
+        row 1: 1.developer.0
+        table_name: developer
+      - count: "2"
+        field_name: _link_main
+        field_title: _link_main
+        field_type: text
+        row 0: "0"
+        row 1: "1"
+        table_name: developer
+      - count: "2"
+        field_name: name
+        field_title: name
+        field_type: text
+        row 0: deva
+        row 1: devb
+        table_name: developer
+    table_name: developer
+  - fields:
+      - count: "3"
+        field_name: _link
+        field_title: _link
+        field_type: text
+        row 0: 0.platforms.0
+        row 1: 1.platforms.0
+        row 2: 1.platforms.1
+        table_name: platforms
+      - count: "3"
+        field_name: _link_main
+        field_title: _link_main
+        field_type: text
+        row 0: "0"
+        row 1: "1"
+        row 2: "1"
+        table_name: platforms
+      - count: "3"
+        field_name: name
+        field_title: name
+        field_type: text
+        row 0: PC
+        row 1: Xbox
+        row 2: Playstation
+        table_name: platforms
+    table_name: platforms
+start: "[\n  {\n    \"id\": 1,\n    \"developer\": [\n      {\"name\":\"deva\"},\n    ],\n    \"platforms\": [\n      {\"name\":\"PC\"}\n    ],\n    \"rating\": {\n      \"code\": \"E\",\n      \"name\": \"Everyone\"\n    },\n    \"releaseDate\": \"2015-01-01\",\n    \"title\": \"A Game\"\n  },\n  {\n    \"id\": 2,\n    \"developer\": [\n      {\"name\":\"devb\"},\n    ],\n    \"platforms\": [\n      {\"name\":\"Xbox\"},\n      {\"name\":\"Playstation\"}\n    ],\n    \"rating\": {\n      \"code\": \"E\",\n      \"name\": \"Everyone\"\n    },\n    \"releaseDate\": \"2016-01-01\",\n    \"title\": \"B Game\"\n  }\n]\n"
 

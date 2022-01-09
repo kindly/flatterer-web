@@ -1,7 +1,9 @@
 mod buffered_byte_stream;
+mod limited_copy;
 use async_std::fs::File;
 use async_std::io::prelude::*;
-use async_std::io::{copy, BufReader, BufWriter};
+use async_std::io::{BufReader, BufWriter};
+use limited_copy::copy as limited_copy;
 use buffered_byte_stream::BufferedBytesStream;
 use libflatterer::{flatten, flatten_from_jl, FlatFiles, Selector};
 use std::collections::HashMap;
@@ -12,7 +14,7 @@ use tempfile::TempDir;
 use tide::{http, log, utils, Body, Request, Response, StatusCode};
 //use async_std::task;
 use csv::{Reader, Writer};
-use multer::Multipart;
+use multer::{Constraints, Multipart, SizeLimit};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::env::var;
@@ -54,6 +56,7 @@ fn get_app() -> tide::Result<tide::Server<()>> {
     app.at("/api/convert").get(convert);
     app.at("/api/convert").post(convert);
     app.at("/api/convert").put(convert);
+    app.at("/about").serve_file("ui/dist/index.html")?;
     app.at("/").serve_file("ui/dist/index.html")?;
     app.at("/").serve_dir("ui/dist/")?;
 
@@ -122,7 +125,7 @@ async fn download(url_string: String) -> tide::Result<Value> {
     let req = surf::Request::new(Method::Get, url);
     let client = surf::client();
 
-    let file_response = client.send(req).await?;
+    let mut file_response = client.send(req).await?;
 
     if !file_response.status().is_success() {
         return Ok(
@@ -132,9 +135,12 @@ async fn download(url_string: String) -> tide::Result<Value> {
 
     let download_file = format!("{}/download.json", tmp_dir);
     let file = File::create(&download_file).await?;
-    let writer = BufWriter::new(file);
+    let mut writer = BufWriter::new(file);
 
-    copy(file_response, writer).await?;
+    let copy_result = limited_copy(&mut file_response, &mut writer).await;
+    if let Err(err) = copy_result {
+        return Ok(json!({"error": err.to_string()}))
+    };
 
     Ok(json!({"id": uuid.to_string ()}))
 }
@@ -146,7 +152,12 @@ async fn multipart_upload(req: Request<()>, multipart_boundry: String) -> tide::
 
     let body_stream = BufferedBytesStream { inner: req };
 
-    let mut multipart = Multipart::new(body_stream, multipart_boundry.clone());
+    let constraints = Constraints::new()
+    .size_limit(
+        SizeLimit::new()
+            .whole_stream(500 * 1024 * 1024)
+    );
+    let mut multipart = Multipart::with_constraints(body_stream, multipart_boundry.clone(), constraints);
 
     let uuid = Uuid::new_v4().to_hyphenated();
     let tmp_dir = format!("/tmp/flatterer-{}", uuid);
@@ -175,16 +186,19 @@ async fn multipart_upload(req: Request<()>, multipart_boundry: String) -> tide::
     Ok(json!({"id": uuid.to_string ()}))
 }
 
-async fn json_request(req: Request<()>) -> tide::Result<Value> {
+async fn json_request(mut req: Request<()>) -> tide::Result<Value> {
     let uuid = Uuid::new_v4().to_hyphenated();
     let tmp_dir = format!("/tmp/flatterer-{}", uuid);
     async_std::fs::create_dir(&tmp_dir).await?;
 
     let download_file = format!("/tmp/flatterer-{}/download.json", uuid);
 
-    let output = File::create(&download_file).await?;
+    let mut output = File::create(&download_file).await?;
 
-    copy(req, output).await?;
+    let copy_result = limited_copy(&mut req, &mut output).await;
+    if let Err(err) = copy_result {
+        return Ok(json!({"error": err.to_string()}))
+    };
 
     Ok(json!({"id": uuid.to_string ()}))
 }
@@ -243,7 +257,10 @@ async fn convert(mut req: Request<()>) -> tide::Result<Response> {
         };
         json!({ "id": id })
     } else if !multipart_boundry.is_empty() {
-        multipart_upload(req, multipart_boundry).await?
+        match multipart_upload(req, multipart_boundry).await {
+             Err(error) => {json!({"error": error.to_string()})}
+             Ok(val) => {val}
+        }
     } else if content_type == "application/json" {
         json_request(req).await?
     } else {
@@ -308,8 +325,8 @@ async fn convert(mut req: Request<()>) -> tide::Result<Response> {
 
     if output_format == "preview" {
         let fields_value = fields_output(output_path.clone())?;
-        let preview_value = preview_output(output_path.clone()).await?;
-        let output = json!({"id": id, "fields": fields_value, "preview": preview_value, "start": start});
+        let preview_value = preview_output(output_path.clone(), fields_value).await?;
+        let output = json!({"id": id, "preview": preview_value, "start": start});
         let mut res = Response::new(StatusCode::Ok);
         let body = Body::from_json(&output)?;
         res.set_body(body);
@@ -482,25 +499,37 @@ fn fields_output(output_path: PathBuf) -> tide::Result<Vec<HashMap<String, Strin
     Ok(all_fields)
 }
 
-async fn preview_output(output_path: PathBuf) -> tide::Result<Value> {
-    let mut previews = HashMap::new();
+async fn preview_output(output_path: PathBuf, fields: Vec<HashMap<String, String>>) -> tide::Result<Value> {
+    let mut previews = vec![];
 
-    for entry in WalkDir::new(output_path.join("csv"))
-        .min_depth(1)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
-        let mut rows = vec![];
+    let mut tables_reader = Reader::from_path(output_path.join("tables.csv"))?;
 
-        let path = entry.path();
-        let table = path.file_stem().unwrap().to_string_lossy().to_string(); //we know the csv files have a stem.
+    for row in tables_reader.deserialize() {
+        let table_row: HashMap<String, String> = row?;
+        let table = table_row.get("table_name").unwrap().clone();
+        let table_title = table_row.get("table_title").unwrap().clone();
+
+        let path = output_path.join("csv").join(format!("{}.csv", table_title));
+
+        let mut table_fields = vec![];
+
+        for field in fields.iter() {
+            if field.get("table_name").unwrap() == &table {
+                table_fields.push(field.clone());
+            }
+        }
 
         let mut reader = Reader::from_path(path)?;
-        for row in reader.deserialize() {
+        for (row_num, row) in reader.deserialize().enumerate() {
             let row: Vec<String> = row?;
-            rows.push(row)
+            for (col_num, item) in row.iter().enumerate(){
+                table_fields[col_num].insert(format!("row {}", row_num), item.clone());
+            }
         }
-        previews.insert(table, rows);
+
+        let preview = json!({"table_name": table_title, "fields": table_fields});
+
+        previews.push(preview);
     }
     Ok(serde_json::to_value(previews)?)
 }

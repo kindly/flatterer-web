@@ -22,6 +22,7 @@ uuid = { version = "0.8", features = ["serde", "v4"] }
 multer= "2"
 futures-core="0.3"
 csv="1"
+pin-project-lite="0.2.8"
 
 [dev-dependencies]
 tide-testing = "0.1.3"

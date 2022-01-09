@@ -5,11 +5,18 @@ Vue.use(Vuex);
 
 export default new Vuex.Store({
   state: {
-    preview_data: undefined,
+    sections: {
+      error: false,
+      tables: false,
+    },
+    listItem: "json-input",
   },
   mutations: {
-    set_preview_data(state, data) {
-      state.preview_data = data;
+    setSection(state, section) {
+      this.state.sections[section.name] = section.value;
+    },
+    setListItem(state, listItem) {
+      this.state.listItem = listItem;
     },
   },
   actions: {},
