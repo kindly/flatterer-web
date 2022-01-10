@@ -56,9 +56,9 @@ fn get_app() -> tide::Result<tide::Server<()>> {
     app.at("/api/convert").get(convert);
     app.at("/api/convert").post(convert);
     app.at("/api/convert").put(convert);
-    app.at("/about").serve_file("ui/dist/index.html")?;
-    app.at("/").serve_file("ui/dist/index.html")?;
-    app.at("/").serve_dir("ui/dist/")?;
+    app.at("/about").serve_file("dist/index.html")?;
+    app.at("/").serve_file("dist/index.html")?;
+    app.at("/").serve_dir("dist/")?;
 
     Ok(app)
 }
