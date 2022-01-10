@@ -391,6 +391,9 @@ export default {
           params[key] = this[key];
         }
       }
+      if (this.arrayPosition == "stream") {
+        params["json_lines"] = true;
+      }
       return params;
     },
     generateDownload(downloadType) {
