@@ -207,7 +207,7 @@
         >As the transformation failed, here is the initial part of the input
         file to check if it is as you expect:
         <v-sheet color="grey lighten-3 mt-1">
-          <pre class="pa-2">{{ fileStart }}</pre>
+          <pre class="pa-2" style="white-space: pre-wrap">{{ fileStart }}</pre>
         </v-sheet>
       </v-card-text>
     </v-card>
@@ -393,6 +393,9 @@ export default {
       }
       if (this.arrayPosition == "stream") {
         params["json_lines"] = true;
+      }
+      if (this.arrayPosition == "top") {
+        params["array_key"] = "";
       }
       return params;
     },

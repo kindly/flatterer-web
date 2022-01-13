@@ -13,7 +13,7 @@ use surf::http::{Method, Url};
 use tempfile::TempDir;
 use tide::{http, log, utils, Body, Request, Response, StatusCode};
 //use async_std::task;
-use csv::{Reader, Writer};
+use csv::Reader;
 use multer::{Constraints, Multipart, SizeLimit};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -95,30 +95,11 @@ struct FieldsRecord {
     field_title: Option<String>,
 }
 
-async fn get_fields_file(value: Value, tmp_dir_path: PathBuf) -> tide::Result<String> {
-    let path = tmp_dir_path.join("fields.csv");
 
-    let mut csv_writer = Writer::from_path(&path)?;
-
-    if let Some(fields_value) = value.get("fields") {
-        if let Some(fields_array) = fields_value.as_array() {
-            for field in fields_array {
-                let field_struct: FieldsRecord = serde_json::from_value(field.clone())?;
-                csv_writer.serialize(field_struct)?;
-            }
-        }
-    }
-
-    Ok(path.to_string_lossy().to_string())
-}
-
-async fn download(url_string: String) -> tide::Result<Value> {
-    let uuid = Uuid::new_v4().to_hyphenated();
-    let tmp_dir = format!("/tmp/flatterer-{}", uuid);
-    async_std::fs::create_dir(&tmp_dir).await?;
+async fn download(url_string: String, tmp_dir: &str) -> tide::Result<()> {
 
     if !url_string.starts_with("http") {
-        return Ok(json!({"error": "`url` is empty or does not start with `http`"}));
+        return Err(tide::Error::from_str(tide::StatusCode::BadRequest, "`url` is empty or does not start with `http`"))
     }
 
     let url = Url::parse(&url_string)?;
@@ -128,27 +109,19 @@ async fn download(url_string: String) -> tide::Result<Value> {
     let mut file_response = client.send(req).await?;
 
     if !file_response.status().is_success() {
-        return Ok(
-            json!({"error": "file download failed due to bad request status code`", "status_code": file_response.status().to_string()}),
-        );
+        return Err(tide::Error::from_str(tide::StatusCode::BadRequest, "file download failed due to bad request status code`"))
     }
 
     let download_file = format!("{}/download.json", tmp_dir);
     let file = File::create(&download_file).await?;
     let mut writer = BufWriter::new(file);
 
-    let copy_result = limited_copy(&mut file_response, &mut writer).await;
-    if let Err(err) = copy_result {
-        return Ok(json!({"error": err.to_string()}))
-    };
+    limited_copy(&mut file_response, &mut writer).await?;
 
-    Ok(json!({"id": uuid.to_string ()}))
+    Ok(())
 }
 
-async fn multipart_upload(req: Request<()>, multipart_boundry: String) -> tide::Result<Value> {
-    let uuid = Uuid::new_v4().to_hyphenated();
-    let tmp_dir = format!("/tmp/flatterer-{}", uuid);
-    async_std::fs::create_dir(&tmp_dir).await?;
+async fn multipart_upload(req: Request<()>, multipart_boundry: String, tmp_dir: &str) -> tide::Result<Vec<String>> {
 
     let body_stream = BufferedBytesStream { inner: req };
 
@@ -159,48 +132,40 @@ async fn multipart_upload(req: Request<()>, multipart_boundry: String) -> tide::
     );
     let mut multipart = Multipart::with_constraints(body_stream, multipart_boundry.clone(), constraints);
 
-    let uuid = Uuid::new_v4().to_hyphenated();
-    let tmp_dir = format!("/tmp/flatterer-{}", uuid);
-    async_std::fs::create_dir(&tmp_dir).await?;
-
-    let download_file = format!("/tmp/flatterer-{}/download.json", uuid);
-
-    let mut found_file = false;
-
-    let mut output = File::create(&download_file).await?;
+    let mut output = vec![];
 
     while let Some(mut field) = multipart.next_field().await? {
+        let download_file;
+        let mut download_output;
+
         if field.name() == Some("file") {
-            found_file = true;
+            download_file = format!("{}/download.json", tmp_dir);
+            output.push("file".to_string());
         }
-
+        else if field.name() == Some("fields") {
+            download_file = format!("{}/fields.csv", tmp_dir);
+            output.push("fields".to_string());
+        }
+        else if field.name() == Some("tables") {
+            download_file = format!("{}/tables.csv", tmp_dir);
+            output.push("tables".to_string());
+        } else {
+            break
+        }
+        download_output = File::create(&download_file).await?;
         while let Some(chunk) = field.chunk().await? {
-            output.write_all(&chunk).await?;
+            download_output.write_all(&chunk).await?;
         }
     }
 
-    if !found_file {
-        return Ok(json!({"error": "form field `file` not found"}));
-    }
-
-    Ok(json!({"id": uuid.to_string ()}))
+    Ok(output)
 }
 
-async fn json_request(mut req: Request<()>) -> tide::Result<Value> {
-    let uuid = Uuid::new_v4().to_hyphenated();
-    let tmp_dir = format!("/tmp/flatterer-{}", uuid);
-    async_std::fs::create_dir(&tmp_dir).await?;
-
-    let download_file = format!("/tmp/flatterer-{}/download.json", uuid);
-
+async fn json_request(mut req: Request<()>, tmp_dir: &str) -> tide::Result<()> {
+    let download_file = format!("{}/download.json", tmp_dir);
     let mut output = File::create(&download_file).await?;
-
-    let copy_result = limited_copy(&mut req, &mut output).await;
-    if let Err(err) = copy_result {
-        return Ok(json!({"error": err.to_string()}))
-    };
-
-    Ok(json!({"id": uuid.to_string ()}))
+    limited_copy(&mut req, &mut output).await?;
+    Ok(())
 }
 
 fn clean_tmp() -> tide::Result<()> {
@@ -223,7 +188,7 @@ fn clean_tmp() -> tide::Result<()> {
     Ok(())
 }
 
-async fn convert(mut req: Request<()>) -> tide::Result<Response> {
+async fn convert(req: Request<()>) -> tide::Result<Response> {
     clean_tmp()?;
     let query: Query = req.query()?;
     let tmp_dir = TempDir::new()?;
@@ -242,30 +207,41 @@ async fn convert(mut req: Request<()>) -> tide::Result<Response> {
         }
     }
 
-    let mut fields_file = "".to_string();
+    let mut json_output;
 
-    let mut json_output = if let Some(file_url) = &query.file_url {
-        if content_type == "application/json" {
-            fields_file =
-                get_fields_file(req.body_json().await?, tmp_dir_path.to_path_buf()).await?
-        };
-        download(file_url.clone()).await?
-    } else if let Some(id) = &query.id {
-        if content_type == "application/json" {
-            fields_file =
-                get_fields_file(req.body_json().await?, tmp_dir_path.to_path_buf()).await?
-        };
-        json!({ "id": id })
-    } else if !multipart_boundry.is_empty() {
-        match multipart_upload(req, multipart_boundry).await {
-             Err(error) => {json!({"error": error.to_string()})}
-             Ok(val) => {val}
+    if let Some(id) = &query.id {
+        json_output = json!({ "id": id })
+    } else {  
+        let uuid = Uuid::new_v4().to_hyphenated();
+        let tmp_dir = format!("/tmp/flatterer-{}", uuid);
+        json_output = json!({ "id": uuid.to_string() });
+        async_std::fs::create_dir(&tmp_dir).await?;
+
+        let mut uploaded_files = vec![];
+
+        if !multipart_boundry.is_empty() {
+            match multipart_upload(req, multipart_boundry, &tmp_dir).await {
+                 Err(error) => {json_output = json!({"error": error.to_string()})}
+                 Ok(val) => {uploaded_files = val}
+            }
+        } else if content_type == "application/json" {
+            if let Err(error) = json_request(req, &tmp_dir).await {
+                json_output = json!({"error": error.to_string()})
+            }
+            uploaded_files.push("file".to_string());
+        } 
+
+        if let Some(file_url) = &query.file_url {
+            if let Err(error) = download(file_url.clone(), &tmp_dir).await {
+                json_output = json!({"error": error.to_string()})
+            }
+            uploaded_files.push("file".to_string());
         }
-    } else if content_type == "application/json" {
-        json_request(req).await?
-    } else {
-        json!({"error": "need to supply either an id or filename or supply data in request body"})
-    };
+
+        if !uploaded_files.contains(&"file".to_string()) {
+            json_output = json!({"error": "need to supply either an id or filename or supply data in request body"});
+        }
+    }
 
     let mut download_file = "".to_string();
     let mut id = "".to_string();
@@ -292,7 +268,7 @@ async fn convert(mut req: Request<()>) -> tide::Result<Response> {
     let download_file_copy = download_file.clone();
 
     let flatterer_result = async_std::task::spawn_blocking(|| -> tide::Result<()> {
-        run_flatterer(query_copy, fields_file, download_file_copy, output_path_copy)?;
+        run_flatterer(query_copy, download_file_copy, output_path_copy)?;
         Ok(())
     })
     .await;
@@ -389,7 +365,6 @@ async fn convert(mut req: Request<()>) -> tide::Result<Response> {
 
 fn run_flatterer(
     mut query: Query,
-    fields_file: String,
     download_file: String,
     output_path: PathBuf,
 ) -> tide::Result<()> {
@@ -429,10 +404,6 @@ fn run_flatterer(
 
     if output_format == "preview" {
         flat_files.preview = 10;
-    }
-
-    if !fields_file.is_empty() {
-        flat_files.use_fields_csv(fields_file, true)?;
     }
 
     if query.json_lines.unwrap_or(false) {
@@ -540,45 +511,6 @@ mod tests {
     use super::*;
     use async_std::fs::read_to_string;
     use tide_testing::TideTestingExt;
-
-    #[test]
-    fn test_remove_field() {
-        async_std::task::block_on(async {
-            let app = get_app().unwrap();
-
-            let body_string = read_to_string("fixtures/prize.json").await.unwrap();
-
-            let mut response_body: serde_json::value::Value = app
-                .post("/api/convert?output_format=fields&array_key=prizes")
-                .body(tide::Body::from_string(body_string))
-                .content_type("application/json")
-                .recv_json()
-                .await
-                .unwrap();
-
-            insta::with_settings!({sort_maps => true}, {
-                insta::assert_yaml_snapshot!(&response_body, {".id" => "[id]"});
-            });
-
-            let field_array = response_body["fields"].as_array_mut().unwrap();
-            field_array.pop();
-
-            let response_body_after_fields: serde_json::value::Value = app
-                .post(format!(
-                    "/api/convert?output_format=fields&array_key=prizes&id={}",
-                    response_body["id"].as_str().unwrap()
-                ))
-                .body(tide::Body::from_json(&response_body).unwrap())
-                .content_type("application/json")
-                .recv_json()
-                .await
-                .unwrap();
-
-            insta::with_settings!({sort_maps => true}, {
-                insta::assert_yaml_snapshot!(&response_body_after_fields, {".id" => "[id]"});
-            });
-        })
-    }
 
     #[test]
     fn test_preview_output() {
