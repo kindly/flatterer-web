@@ -83,7 +83,7 @@
                   <template v-slot:label>
                     <strong>Position in JSON:</strong>
                   </template>
-                  <v-radio label="Top level array" value="top"></v-radio>
+                  <v-radio label="Guess based on data" value="top"></v-radio>
                   <v-radio label="JSON stream" value="stream"></v-radio>
                   <v-radio label="Array in object" value="nested"></v-radio>
                 </v-radio-group>
@@ -253,7 +253,12 @@
     </v-card>
 
     <v-card class="mt-4" v-if="apiResponse" id="success">
-      <v-alert type="success">File Processed Successfully!</v-alert>
+      <v-alert type="success"
+        >File Processed Successfully!
+        <small v-if="apiResponse.guess_text"
+          >Guessed that data array was in {{ apiResponse.guess_text }}
+        </small>
+      </v-alert>
     </v-card>
 
     <v-card class="mt-4" v-if="apiResponse">

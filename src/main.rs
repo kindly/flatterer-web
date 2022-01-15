@@ -270,19 +270,51 @@ async fn convert(req: Request<()>) -> tide::Result<Response> {
         return Ok(res);
     }
 
+    let mut file = File::open(download_file).await?;
+    let mut buf = vec![0;10240];
+    let n = file.read(&mut buf).await?;
+    let start = String::from_utf8_lossy(&buf[..n]);        
+
+    let mut path = "".to_string();
+
+    if let Some(array_key) = &query.array_key {
+        path = array_key.to_owned();
+    };
+
+    let mut json_lines = query.json_lines.unwrap_or(false);
+
+    let mut guess_text = "".to_string();
+
+    if path.is_empty() && !json_lines {
+        match libflatterer::parse(&start) {
+            Ok((guess, path_guess)) => {
+                if guess == "stream" {
+                    json_lines = true;
+                    guess_text = "JSON Stream".to_string()
+                };
+                if guess == "list_in_object" {
+                    path = path_guess.clone();
+                    guess_text = format!("`{}` key in object", path_guess)
+                };
+            }
+            Err(err) => {
+                let mut res = Response::new(StatusCode::BadRequest);
+                let output = json!({"id": id, "error": err.to_string(), "start": start});
+                let body = Body::from_json(&output)?;
+                res.set_body(body);
+                return Ok(res);
+            }
+        }
+    }
+
     let output_path_copy = output_path.clone();
     let query_copy = query.clone();
 
-    let flatterer_result = async_std::task::spawn_blocking(|| -> tide::Result<()> {
-        run_flatterer(query_copy, download_path, output_path_copy)?;
+    let flatterer_result = async_std::task::spawn_blocking(move || -> tide::Result<()> {
+        run_flatterer(query_copy, download_path, output_path_copy, json_lines, path)?;
         Ok(())
     })
     .await;
-
-    let mut file = File::open(download_file).await?;
-    let mut buf = vec![0;1024];
-    let n = file.read(&mut buf).await?;
-    let start = String::from_utf8_lossy(&buf[..n]);        
 
     if let Err(err) = flatterer_result {
         let mut res = Response::new(StatusCode::BadRequest);
@@ -329,7 +361,7 @@ async fn convert(req: Request<()>) -> tide::Result<Response> {
     if output_format == "preview" {
         let fields_value = fields_output(output_path.clone())?;
         let preview_value = preview_output(output_path.clone(), fields_value).await?;
-        let output = json!({"id": id, "preview": preview_value, "start": start});
+        let output = json!({"id": id, "preview": preview_value, "start": start, "guess_text": guess_text});
         let mut res = Response::new(StatusCode::Ok);
         let body = Body::from_json(&output)?;
         res.set_body(body);
@@ -394,6 +426,8 @@ fn run_flatterer(
     mut query: Query,
     download_path: String,
     output_path: PathBuf,
+    json_lines: bool,
+    path: String,
 ) -> tide::Result<()> {
     let file = StdFile::open(format!("{}/download.json", download_path))?;
     let reader = StdBufReader::new(file);
@@ -445,16 +479,17 @@ fn run_flatterer(
         flat_files.use_tables_csv(tables_file, query.tables_only.unwrap_or_else(|| false))?;
     }
 
-    if query.json_lines.unwrap_or(false) {
+    if json_lines {
         flatten_from_jl(
             reader,     // reader
             flat_files, // FlatFile instance.
         )?;
     } else {
         let mut selectors = vec![];
-        if let Some(array_key) = query.array_key {
-            selectors.push(Selector::Identifier(format!("\"{}\"", array_key)));
-        };
+
+        if !path.is_empty() {
+            selectors.push(Selector::Identifier(format!("\"{}\"", path)));
+        }
 
         flatten(
             reader,     // reader
