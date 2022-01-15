@@ -37,6 +37,8 @@ struct Query {
     table_prefix: Option<String>,
     path_seperator: Option<String>,
     schema_titles: Option<String>,
+    fields_only: Option<bool>,
+    tables_only: Option<bool>,
 }
 
 fn get_app() -> tide::Result<tide::Server<()>> {
@@ -69,7 +71,6 @@ async fn main() -> tide::Result<()> {
     clean_tmp()?;
 
     let app = get_app()?;
-
     let port = if let Ok(port) = var("PORT") {
         port
     } else {
@@ -182,7 +183,11 @@ fn clean_tmp() -> tide::Result<()> {
             continue;
         }
         if entry.metadata()?.modified()?.elapsed()?.as_secs() > 3600 {
-            std::fs::remove_dir_all(&entry.into_path())?;
+            log::debug!("Removing tmp dir: {:?}", entry);
+
+            if entry.metadata()?.is_dir() {
+                std::fs::remove_dir_all(&entry.into_path())?;
+            }
         }
     }
     Ok(())
@@ -243,13 +248,15 @@ async fn convert(req: Request<()>) -> tide::Result<Response> {
         }
     }
 
+    let mut download_path = "".to_string();
     let mut download_file = "".to_string();
     let mut id = "".to_string();
 
     if let Some(id_value) = json_output.get("id") {
         if let Some(id_string) = id_value.as_str() {
             id = id_string.to_string();
-            download_file = format!("/tmp/flatterer-{}/download.json", id_string);
+            download_path = format!("/tmp/flatterer-{}", id_string);
+            download_file = format!("{}/download.json", &download_path);
             if !std::path::Path::new(&download_file).exists() {
                 json_output = json!({"error": "id does not exist, you may need to ask you file to be downloaded again or to upload the file again."})
             }
@@ -265,10 +272,9 @@ async fn convert(req: Request<()>) -> tide::Result<Response> {
 
     let output_path_copy = output_path.clone();
     let query_copy = query.clone();
-    let download_file_copy = download_file.clone();
 
     let flatterer_result = async_std::task::spawn_blocking(|| -> tide::Result<()> {
-        run_flatterer(query_copy, download_file_copy, output_path_copy)?;
+        run_flatterer(query_copy, download_path, output_path_copy)?;
         Ok(())
     })
     .await;
@@ -291,11 +297,32 @@ async fn convert(req: Request<()>) -> tide::Result<Response> {
     let output_format = query.output_format.unwrap_or_else(|| "zip".to_string());
 
     if output_format == "fields" {
-        let fields_value = fields_output(output_path.clone())?;
-        let output = json!({"id": id, "fields": fields_value});
+        let fields_file = File::open(output_path.join("fields.csv")).await?;
+        let fields_file_buf = BufReader::new(fields_file);
+
         let mut res = Response::new(StatusCode::Ok);
-        let body = Body::from_json(&output)?;
+        let body = Body::from_reader(fields_file_buf, None);
         res.set_body(body);
+        res.set_content_type("text/csv");
+        res.append_header(
+            "Content-Disposition",
+            format!("attachment; filename=\"{}\"", "fields.csv"),
+        );
+        return Ok(res);
+    }
+
+    if output_format == "tables" {
+        let tables_file = File::open(output_path.join("tables.csv")).await?;
+        let tables_file_buf = BufReader::new(tables_file);
+
+        let mut res = Response::new(StatusCode::Ok);
+        let body = Body::from_reader(tables_file_buf, None);
+        res.set_body(body);
+        res.set_content_type("text/csv");
+        res.append_header(
+            "Content-Disposition",
+            format!("attachment; filename=\"{}\"", "tables.csv"),
+        );
         return Ok(res);
     }
 
@@ -365,10 +392,10 @@ async fn convert(req: Request<()>) -> tide::Result<Response> {
 
 fn run_flatterer(
     mut query: Query,
-    download_file: String,
+    download_path: String,
     output_path: PathBuf,
 ) -> tide::Result<()> {
-    let file = StdFile::open(download_file)?;
+    let file = StdFile::open(format!("{}/download.json", download_path))?;
     let reader = StdBufReader::new(file);
 
     let output_format = query.output_format.unwrap_or_else(|| "zip".to_string());
@@ -404,6 +431,18 @@ fn run_flatterer(
 
     if output_format == "preview" {
         flat_files.preview = 10;
+    }
+
+    let fields_file = format!("{}/fields.csv", download_path);
+    let fields_path = std::path::Path::new(&fields_file);
+    if fields_path.exists() {
+        flat_files.use_fields_csv(fields_file, query.fields_only.unwrap_or_else(|| false))?;
+    }
+
+    let tables_file = format!("{}/tables.csv", download_path);
+    let tables_path = std::path::Path::new(&tables_file);
+    if tables_path.exists() {
+        flat_files.use_tables_csv(tables_file, query.tables_only.unwrap_or_else(|| false))?;
     }
 
     if query.json_lines.unwrap_or(false) {

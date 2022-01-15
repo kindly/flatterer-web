@@ -25,17 +25,15 @@
             <v-expansion-panel-header>Upload File</v-expansion-panel-header>
 
             <v-expansion-panel-content>
-              <v-form ref="upload-form">
-                <v-file-input
-                  v-model="fileUpload"
-                  label="File input"
-                  id="file-input"
-                  name="file"
-                  outlined
-                  dense
-                  required
-                ></v-file-input>
-              </v-form>
+              <v-file-input
+                v-model="fileUpload"
+                label="File input"
+                id="file-input"
+                name="file"
+                outlined
+                dense
+                required
+              ></v-file-input>
             </v-expansion-panel-content>
           </v-expansion-panel>
           <v-expansion-panel>
@@ -172,6 +170,48 @@
                 ></v-text-field>
               </v-col>
             </v-row>
+            <v-row v-if="panel != 2">
+              <v-col>
+                <v-file-input
+                  v-model="fieldsUpload"
+                  label="fields.csv file"
+                  id="fields-file"
+                  name="fields"
+                  outlined
+                  dense
+                  required
+                ></v-file-input>
+              </v-col>
+              <v-col>
+                <v-checkbox
+                  outlined
+                  dense
+                  hide-details="true"
+                  v-model="fields_only"
+                  label="Only output fields in file"
+                ></v-checkbox>
+              </v-col>
+              <v-col>
+                <v-file-input
+                  v-model="tablesUpload"
+                  label="tables.csv file"
+                  id="tables-file"
+                  name="tables"
+                  outlined
+                  dense
+                  required
+                ></v-file-input>
+              </v-col>
+              <v-col>
+                <v-checkbox
+                  outlined
+                  dense
+                  hide-details="true"
+                  v-model="tables_only"
+                  label="Only output tables in file"
+                ></v-checkbox>
+              </v-col>
+            </v-row>
           </v-container>
         </v-card>
       </v-container>
@@ -246,11 +286,25 @@
             <v-btn color="success" :href="generateDownload('zip')"
               >Download Full Zip</v-btn
             >
-            <v-btn color="success" :href="generateDownload('xlsx')" class="ml-8"
+          </v-col>
+          <v-col>
+            <v-btn color="success" :href="generateDownload('xlsx')"
               >Download XLSX</v-btn
             >
-            <v-btn color="success" :href="generateDownload('csv')" class="ml-8"
-              >Download {{ main_table_name || "main" }} table as CSV</v-btn
+          </v-col>
+          <v-col>
+            <v-btn color="success" :href="generateDownload('csv')"
+              >{{ main_table_name || "main" }} table as CSV</v-btn
+            >
+          </v-col>
+          <v-col>
+            <v-btn color="success" :href="generateDownload('fields')"
+              >Download fields.csv</v-btn
+            >
+          </v-col>
+          <v-col>
+            <v-btn color="success" :href="generateDownload('tables')"
+              >Download tables.csv</v-btn
             >
           </v-col>
         </v-row>
@@ -275,7 +329,10 @@ function defaultData() {
     json_schema: "",
     main_table_name: "",
     inline_one_to_one: false,
-
+    fieldsUpload: null,
+    fields_only: false,
+    tablesUpload: null,
+    tables_only: false,
     id: "",
     formState: "new",
     fileStart: "",
@@ -339,6 +396,10 @@ export default {
         this.json_schema,
         this.main_table_name,
         this.inline_one_to_one,
+        this.fieldsUpload,
+        this.fields_only,
+        this.tablesUpload,
+        this.tables_only,
       ];
     },
     submitButtonText() {
@@ -384,6 +445,8 @@ export default {
         "path_seperator",
         "array_key",
         "json_schema",
+        "fields_only",
+        "tables_only",
       ];
       for (var i in simple_params) {
         let key = simple_params[i];
@@ -454,11 +517,22 @@ export default {
         }.bind(this)
       );
     },
+    uploadFormData(uploadFile) {
+      let formData = new FormData();
+      if (uploadFile) {
+        formData.append("file", this.fileUpload);
+      }
+      if (this.fieldsUpload) {
+        formData.append("fields", this.fieldsUpload);
+      }
+      if (this.tablesUpload) {
+        formData.append("tables", this.tablesUpload);
+      }
+      return formData;
+    },
     upload(params) {
       let urlParams = new URLSearchParams(params).toString();
-      let formData = new FormData();
-      formData.append("file", this.fileUpload);
-
+      let formData = this.uploadFormData(true);
       let requestData = {
         headers: {},
         body: formData,
@@ -469,9 +543,10 @@ export default {
     downloadURL(params) {
       params.file_url = this.url;
       let urlParams = new URLSearchParams(params).toString();
+      let formData = this.uploadFormData(false);
       let requestData = {
-        method: "POST",
         headers: {},
+        body: formData,
       };
       this.postToApi(urlParams, requestData);
       this.submitType = "url";
@@ -479,7 +554,6 @@ export default {
     submitPaste(params) {
       let urlParams = new URLSearchParams(params).toString();
       let requestData = {
-        method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
