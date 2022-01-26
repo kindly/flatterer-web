@@ -5,7 +5,7 @@ use async_std::io::prelude::*;
 use async_std::io::{BufReader, BufWriter};
 use limited_copy::copy as limited_copy;
 use buffered_byte_stream::BufferedBytesStream;
-use libflatterer::{flatten, flatten_from_jl, FlatFiles, Selector};
+use libflatterer::{flatten, FlatFiles};
 use std::collections::HashMap;
 use std::fs::File as StdFile;
 use std::io::{copy as std_copy, BufReader as StdBufReader};
@@ -286,15 +286,11 @@ async fn convert(req: Request<()>) -> tide::Result<Response> {
     let mut guess_text = "".to_string();
 
     if path.is_empty() && !json_lines {
-        match libflatterer::parse(&start) {
-            Ok((guess, path_guess)) => {
+        match libflatterer::guess_array(&start) {
+            Ok((guess, _)) => {
                 if guess == "stream" {
                     json_lines = true;
                     guess_text = "JSON Stream".to_string()
-                };
-                if guess == "list_in_object" {
-                    path = path_guess.clone();
-                    guess_text = format!("`{}` key in object", path_guess)
                 };
             }
             Err(err) => {
@@ -479,24 +475,18 @@ fn run_flatterer(
         flat_files.use_tables_csv(tables_file, query.tables_only.unwrap_or_else(|| false))?;
     }
 
-    if json_lines {
-        flatten_from_jl(
-            reader,     // reader
-            flat_files, // FlatFile instance.
-        )?;
-    } else {
-        let mut selectors = vec![];
+    let mut selectors = vec![];
 
-        if !path.is_empty() {
-            selectors.push(Selector::Identifier(format!("\"{}\"", path)));
-        }
-
-        flatten(
-            reader,     // reader
-            flat_files, // FlatFile instance.
-            selectors,
-        )?;
+    if !path.is_empty() && !json_lines {
+        selectors.push(path);
     }
+
+    flatten(
+        reader,     // reader
+        flat_files, // FlatFile instance.
+        selectors,
+        json_lines
+    )?;
     Ok(())
 }
 

@@ -3,6 +3,7 @@ source: src/main.rs
 expression: "&response_body"
 
 ---
+guess_text: ""
 id: "[id]"
 preview:
   - fields:
