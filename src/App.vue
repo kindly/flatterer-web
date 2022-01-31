@@ -1,6 +1,6 @@
 <template>
   <v-app>
-    <v-navigation-drawer app>
+    <v-navigation-drawer app width="350">
       <v-list-item to="/">
         <v-list-item-content>
           <v-list-item-title class="text-h6"> Flatterer </v-list-item-title>
