@@ -298,6 +298,11 @@
             >
           </v-col>
           <v-col>
+            <v-btn color="success" :href="generateDownload('sqlite')"
+              >Download SQLite</v-btn
+            >
+          </v-col>
+          <v-col>
             <v-btn color="success" :href="generateDownload('csv')"
               >{{ main_table_name || "main" }} table as CSV</v-btn
             >

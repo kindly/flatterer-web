@@ -30,6 +30,7 @@ struct Query {
     array_key: Option<String>,
     json_lines: Option<bool>,
     xlsx: Option<bool>,
+    sqlite: Option<bool>,
     csv: Option<bool>,
     main_table_name: Option<String>,
     inline_one_to_one: Option<bool>,
@@ -378,6 +379,21 @@ async fn convert(req: Request<()>) -> tide::Result<Response> {
         );
         return Ok(res);
     }
+    
+    if output_format == "sqlite" {
+        let sqlite_file = File::open(output_path.join("sqlite.db")).await?;
+        let sqlite_file_buf = BufReader::new(sqlite_file);
+
+        let mut res = Response::new(StatusCode::Ok);
+        let body = Body::from_reader(sqlite_file_buf, None);
+        res.set_body(body);
+        res.set_content_type("application/x-sqlite3");
+        res.append_header(
+            "Content-Disposition",
+            format!("attachment; filename=\"{}.db\"", "flatterer"),
+        );
+        return Ok(res);
+    }
 
     if output_format == "csv" {
         let main_table_name = query.main_table_name.unwrap_or_else(|| "main".to_string());
@@ -432,14 +448,18 @@ fn run_flatterer(
 
     if output_format != "zip" {
         query.csv = Some(false);
-        query.xlsx = Some(false)
+        query.xlsx = Some(false);
+        query.sqlite = Some(false);
     }
 
     if output_format == "xlsx" {
-        query.xlsx = Some(true)
+        query.xlsx = Some(true);
     }
     if output_format == "csv" {
         query.csv = Some(true);
+    }
+    if output_format == "sqlite" {
+        query.sqlite = Some(true);
     }
     if output_format == "preview" {
         query.csv = Some(true);
@@ -449,6 +469,7 @@ fn run_flatterer(
         output_path.to_string_lossy().to_string(),
         query.csv.unwrap_or(true),
         query.xlsx.unwrap_or(false),
+        query.sqlite.unwrap_or(false),
         true, // force
         query.main_table_name.unwrap_or_else(|| "main".to_string()),
         vec![], // list of json paths to omit object as if it was array
