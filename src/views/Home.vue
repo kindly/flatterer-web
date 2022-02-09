@@ -446,7 +446,7 @@ export default {
         "Underscore Slug": "underscore_slug",
       }[this.schemaTitle];
       if (schema_title) {
-        params.schema_title = schema_title;
+        params.schema_titles = schema_title;
       }
       let simple_params = [
         "inline_one_to_one",
