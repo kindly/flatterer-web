@@ -3,8 +3,11 @@
     <v-navigation-drawer app width="350">
       <v-list-item to="/">
         <v-list-item-content>
-          <v-list-item-title class="text-h6"> Flatterer </v-list-item-title>
-          <v-list-item-subtitle> Make JSON Flatterer </v-list-item-subtitle>
+          <img
+            width="150"
+            style="flex: none; margin-left: -10px"
+            src="https://raw.githubusercontent.com/kindly/flatterer/main/docs/_static/flatterer-with-inline-text.svg"
+          />
         </v-list-item-content>
       </v-list-item>
 
