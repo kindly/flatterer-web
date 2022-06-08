@@ -5,7 +5,7 @@ use async_std::io::prelude::*;
 use async_std::io::{BufReader, BufWriter};
 use limited_copy::copy as limited_copy;
 use buffered_byte_stream::BufferedBytesStream;
-use libflatterer::{flatten, FlatFiles};
+use libflatterer::{flatten, Options};
 use std::collections::HashMap;
 use std::fs::File as StdFile;
 use std::io::{copy as std_copy, BufReader as StdBufReader};
@@ -29,9 +29,6 @@ struct Query {
     file_url: Option<String>,
     array_key: Option<String>,
     json_lines: Option<bool>,
-    xlsx: Option<bool>,
-    sqlite: Option<bool>,
-    csv: Option<bool>,
     main_table_name: Option<String>,
     inline_one_to_one: Option<bool>,
     json_schema: Option<String>,
@@ -435,7 +432,7 @@ async fn convert(req: Request<()>) -> tide::Result<Response> {
 }
 
 fn run_flatterer(
-    mut query: Query,
+    query: Query,
     download_path: String,
     output_path: PathBuf,
     json_lines: bool,
@@ -446,67 +443,64 @@ fn run_flatterer(
 
     let output_format = query.output_format.unwrap_or_else(|| "zip".to_string());
 
+    let mut options = Options::builder().build();
+
     if output_format != "zip" {
-        query.csv = Some(false);
-        query.xlsx = Some(false);
-        query.sqlite = Some(false);
+        options.csv = false;
+        options.xlsx = false;
+        options.sqlite = false;
     }
 
     if output_format == "xlsx" {
-        query.xlsx = Some(true);
+        options.xlsx = true;
     }
     if output_format == "csv" {
-        query.csv = Some(true);
+        options.csv = true;
     }
     if output_format == "sqlite" {
-        query.sqlite = Some(true);
+        options.sqlite = true;
     }
     if output_format == "preview" {
-        query.csv = Some(true);
+        options.csv = true;
+        options.preview = 10;
     }
+    options.force = true;
+    options.main_table_name = query.main_table_name.unwrap_or_else(|| "main".to_string());
 
-    let mut flat_files = FlatFiles::new(
-        output_path.to_string_lossy().to_string(),
-        query.csv.unwrap_or(true),
-        query.xlsx.unwrap_or(false),
-        query.sqlite.unwrap_or(false),
-        true, // force
-        query.main_table_name.unwrap_or_else(|| "main".to_string()),
-        vec![], // list of json paths to omit object as if it was array
-        query.inline_one_to_one.unwrap_or(false),
-        query.json_schema.unwrap_or_else(|| "".to_string()),
-        query.table_prefix.unwrap_or_else(|| "".to_string()),
-        query.path_seperator.unwrap_or_else(|| "_".to_string()),
-        query.schema_titles.unwrap_or_else(|| "".to_string()),
-    )?;
+    options.inline_one_to_one = query.inline_one_to_one.unwrap_or(false);
 
-    if output_format == "preview" {
-        flat_files.preview = 10;
-    }
+    options.schema = query.json_schema.unwrap_or_else(|| "".to_string());
+
+    options.table_prefix = query.table_prefix.unwrap_or_else(|| "".to_string());
+    options.path_separator = query.path_seperator.unwrap_or_else(|| "_".to_string());
+    options.schema_titles = query.schema_titles.unwrap_or_else(|| "".to_string());
+    options.json_stream = json_lines;
 
     let fields_file = format!("{}/fields.csv", download_path);
     let fields_path = std::path::Path::new(&fields_file);
     if fields_path.exists() {
-        flat_files.use_fields_csv(fields_file, query.fields_only.unwrap_or_else(|| false))?;
+        options.fields_csv = fields_file;
     }
+    options.only_fields = query.fields_only.unwrap_or_else(|| false);
 
     let tables_file = format!("{}/tables.csv", download_path);
     let tables_path = std::path::Path::new(&tables_file);
     if tables_path.exists() {
-        flat_files.use_tables_csv(tables_file, query.tables_only.unwrap_or_else(|| false))?;
+        options.tables_csv = tables_file;
     }
+    options.only_tables = query.tables_only.unwrap_or_else(|| false);
 
-    let mut selectors = vec![];
+    let mut path_vec = vec![];
 
     if !path.is_empty() && !json_lines {
-        selectors.push(path);
+        path_vec.push(path);
     }
+    options.path = path_vec;
 
     flatten(
-        reader,     // reader
-        flat_files, // FlatFile instance.
-        selectors,
-        json_lines
+        reader,
+        output_path.to_string_lossy().to_string(),
+        options
     )?;
     Ok(())
 }

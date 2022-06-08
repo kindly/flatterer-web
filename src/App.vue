@@ -5,7 +5,7 @@
         <v-list-item-content>
           <img
             width="150"
-            style="flex: none; margin-left: -10px"
+            style="flex: none"
             src="https://raw.githubusercontent.com/kindly/flatterer/main/docs/_static/flatterer-with-inline-text.svg"
           />
         </v-list-item-content>
