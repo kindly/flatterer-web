@@ -37,6 +37,7 @@ struct Query {
     schema_titles: Option<String>,
     fields_only: Option<bool>,
     tables_only: Option<bool>,
+    pushdown: Option<String>,
 }
 
 fn get_app() -> tide::Result<tide::Server<()>> {
@@ -489,6 +490,11 @@ fn run_flatterer(
         options.tables_csv = tables_file;
     }
     options.only_tables = query.tables_only.unwrap_or_else(|| false);
+
+    let pushdown = query.pushdown.unwrap_or_else(|| "".into());
+    if !pushdown.is_empty() {
+        options.pushdown = vec![pushdown];
+    }
 
     let mut path_vec = vec![];
 

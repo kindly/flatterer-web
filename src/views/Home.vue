@@ -169,6 +169,16 @@
                   messages="Seperator between each part of the output field and table name. Defaults to `_`."
                 ></v-text-field>
               </v-col>
+              <v-col>
+                <v-text-field
+                  outlined
+                  dense
+                  label="Pushdown"
+                  v-model="pushdown"
+                  placeholder="id"
+                  messages="Field to pushdown to seperate tables"
+                ></v-text-field>
+              </v-col>
             </v-row>
             <v-row v-if="panel != 2">
               <v-col>
@@ -343,6 +353,7 @@ function defaultData() {
     fields_only: false,
     tablesUpload: null,
     tables_only: false,
+    pushdown:"",
     id: "",
     formState: "new",
     fileStart: "",
@@ -410,6 +421,7 @@ export default {
         this.fields_only,
         this.tablesUpload,
         this.tables_only,
+        this.pushdown,
       ];
     },
     submitButtonText() {
@@ -457,6 +469,7 @@ export default {
         "json_schema",
         "fields_only",
         "tables_only",
+        "pushdown",
       ];
       for (var i in simple_params) {
         let key = simple_params[i];
