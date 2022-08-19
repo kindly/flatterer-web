@@ -1,7 +1,10 @@
 [package]
 name = "flatterer-web"
 version = "0.16.0"
+authors = ["David Raznick <kindly@gmail.com>"]
 edition = "2021"
+description = "JSON flatterer UI"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
