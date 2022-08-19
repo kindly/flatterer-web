@@ -1,7 +1,6 @@
 ---
-source: src/main.rs
+source: src/lib.rs
 expression: "&response_body"
-
 ---
 guess_text: ""
 id: "[id]"
@@ -99,5 +98,5 @@ preview:
         row 2: Playstation
         table_name: platforms
     table_name: platforms
-start: "[\n  {\n    \"id\": 1,\n    \"developer\": [\n      {\"name\":\"deva\"},\n    ],\n    \"platforms\": [\n      {\"name\":\"PC\"}\n    ],\n    \"rating\": {\n      \"code\": \"E\",\n      \"name\": \"Everyone\"\n    },\n    \"releaseDate\": \"2015-01-01\",\n    \"title\": \"A Game\"\n  },\n  {\n    \"id\": 2,\n    \"developer\": [\n      {\"name\":\"devb\"},\n    ],\n    \"platforms\": [\n      {\"name\":\"Xbox\"},\n      {\"name\":\"Playstation\"}\n    ],\n    \"rating\": {\n      \"code\": \"E\",\n      \"name\": \"Everyone\"\n    },\n    \"releaseDate\": \"2016-01-01\",\n    \"title\": \"B Game\"\n  }\n]\n"
+start: "[\n  {\n    \"id\": 1,\n    \"developer\": [\n      {\"name\":\"deva\"}\n    ],\n    \"platforms\": [\n      {\"name\":\"PC\"}\n    ],\n    \"rating\": {\n      \"code\": \"E\",\n      \"name\": \"Everyone\"\n    },\n    \"releaseDate\": \"2015-01-01\",\n    \"title\": \"A Game\"\n  },\n  {\n    \"id\": 2,\n    \"developer\": [\n      {\"name\":\"devb\"}\n    ],\n    \"platforms\": [\n      {\"name\":\"Xbox\"},\n      {\"name\":\"Playstation\"}\n    ],\n    \"rating\": {\n      \"code\": \"E\",\n      \"name\": \"Everyone\"\n    },\n    \"releaseDate\": \"2016-01-01\",\n    \"title\": \"B Game\"\n  }\n]\n"
 

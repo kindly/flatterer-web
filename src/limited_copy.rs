@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::pin::Pin;
+use std::env::var;
 
 use pin_project_lite::pin_project;
 
@@ -56,6 +57,7 @@ where
             #[pin]
             writer: W,
             amt: u64,
+            limit: u64,
         }
     }
 
@@ -80,7 +82,7 @@ where
                     return Poll::Ready(Err(io::ErrorKind::WriteZero.into()));
                 }
                 *this.amt += i as u64;
-                if *this.amt > 500 * 1024 * 1024 {
+                if *this.amt > *this.limit * 1024 * 1024 {
                     let err = std::io::Error::new(io::ErrorKind::Other, "Download Size Exceeded");
                     return Poll::Ready(Err(err));
                 }
@@ -89,10 +91,20 @@ where
         }
     }
 
+    let max_size = if let Ok(max_size) = var("MAX_SIZE") {
+        match max_size.parse::<u64>() {
+            Ok(max_size) => {max_size},
+            _ => {500}
+        }
+    } else {
+        500
+    };
+
     let future = CopyFuture {
         reader: BufReader::new(reader),
         writer,
         amt: 0,
+        limit: max_size
     };
     future.await // .context(|| String::from("io::copy failed"))
 }

@@ -54,18 +54,28 @@ fn get_app() -> tide::Result<tide::Server<()>> {
         Ok(res)
     }));
 
+    let static_files = if let Ok(static_files) = var("STATIC_FILES") {
+        if let Some(static_files) = static_files.strip_suffix("/") {
+            static_files.to_owned()
+        } else {
+            static_files
+        }
+    } else {
+        "dist".to_owned()
+    };
+
     app.at("/api/convert").get(convert);
     app.at("/api/convert").post(convert);
     app.at("/api/convert").put(convert);
-    app.at("/about").serve_file("dist/index.html")?;
-    app.at("/").serve_file("dist/index.html")?;
-    app.at("/").serve_dir("dist/")?;
+    app.at("/about").serve_file(format!("{static_files}/index.html"))?;
+    app.at("/").serve_file(format!("{static_files}/index.html"))?;
+    app.at("/").serve_dir(format!("{static_files}/"))?;
 
     Ok(app)
 }
 
 #[async_std::main]
-async fn main() -> tide::Result<()> {
+pub async fn main() -> tide::Result<()> {
     env_logger::init();
     clean_tmp()?;
 
@@ -75,11 +85,29 @@ async fn main() -> tide::Result<()> {
     } else {
         "8080".to_string()
     };
+
     let host = if let Ok(host) = var("HOST") {
         host
     } else {
         "127.0.0.1".to_string()
     };
+
+    let open_browser = if let Ok(_) = var("OPEN_BROWSER") {
+        true
+    } else {
+        false
+    };
+
+    let path = format!("http://{}:{}", host, port);
+
+    if open_browser {
+        match open::that(&path) {
+            Ok(()) => println!("Opened browser '{}' successfully.", path),
+            Err(err) => eprintln!("An error occurred when opening browser'{}': {}", path, err),
+        } 
+    } else {
+        println!("Running at '{path}'.")
+    }
 
     app.listen(format!("http://{}:{}", host, port)).await?;
 
@@ -125,10 +153,19 @@ async fn multipart_upload(req: Request<()>, multipart_boundry: String, tmp_dir: 
 
     let body_stream = BufferedBytesStream { inner: req };
 
+    let max_size = if let Ok(max_size) = var("MAX_SIZE") {
+        match max_size.parse::<u64>() {
+            Ok(max_size) => {max_size},
+            _ => {500}
+        }
+    } else {
+        500
+    };
+
     let constraints = Constraints::new()
     .size_limit(
         SizeLimit::new()
-            .whole_stream(500 * 1024 * 1024)
+            .whole_stream(max_size * 1024 * 1024)
     );
     let mut multipart = Multipart::with_constraints(body_stream, multipart_boundry.clone(), constraints);
 
@@ -169,6 +206,17 @@ async fn json_request(mut req: Request<()>, tmp_dir: &str) -> tide::Result<()> {
 }
 
 fn clean_tmp() -> tide::Result<()> {
+
+    let clean_tmp_time = if let Ok(clean_tmp_time) = var("CLEAN_TMP_TIME") {
+        match clean_tmp_time.parse::<u64>() {
+            Ok(clean_tmp_time) => {clean_tmp_time},
+            _ => {3600}
+        }
+    } else {
+        3600
+    };
+
+
     for entry in WalkDir::new("/tmp/")
         .min_depth(1)
         .into_iter()
@@ -181,7 +229,7 @@ fn clean_tmp() -> tide::Result<()> {
         {
             continue;
         }
-        if entry.metadata()?.modified()?.elapsed()?.as_secs() > 3600 {
+        if entry.metadata()?.modified()?.elapsed()?.as_secs() > clean_tmp_time {
             log::debug!("Removing tmp dir: {:?}", entry);
 
             if entry.metadata()?.is_dir() {
@@ -193,7 +241,6 @@ fn clean_tmp() -> tide::Result<()> {
 }
 
 async fn convert(req: Request<()>) -> tide::Result<Response> {
-    clean_tmp()?;
     let query: Query = req.query()?;
     let tmp_dir = TempDir::new()?;
     let tmp_dir_path = tmp_dir.path();
@@ -214,8 +261,9 @@ async fn convert(req: Request<()>) -> tide::Result<Response> {
     let mut json_output;
 
     if let Some(id) = &query.id {
-        json_output = json!({ "id": id })
+        json_output = json!({ "id": id });
     } else {  
+        clean_tmp()?;
         let uuid = Uuid::new_v4().to_hyphenated();
         let tmp_dir = format!("/tmp/flatterer-{}", uuid);
         json_output = json!({ "id": uuid.to_string() });
