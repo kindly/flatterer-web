@@ -124,7 +124,7 @@ struct FieldsRecord {
 }
 
 
-async fn download(url_string: String, tmp_dir: &str) -> tide::Result<()> {
+async fn download(url_string: String, tmp_dir: PathBuf) -> tide::Result<()> {
 
     if !url_string.starts_with("http") {
         return Err(tide::Error::from_str(tide::StatusCode::BadRequest, "`url` is empty or does not start with `http`"))
@@ -140,7 +140,7 @@ async fn download(url_string: String, tmp_dir: &str) -> tide::Result<()> {
         return Err(tide::Error::from_str(tide::StatusCode::BadRequest, "file download failed due to bad request status code`"))
     }
 
-    let download_file = format!("{}/download.json", tmp_dir);
+    let download_file = tmp_dir.join("download.json");
     let file = File::create(&download_file).await?;
     let mut writer = BufWriter::new(file);
 
@@ -149,7 +149,7 @@ async fn download(url_string: String, tmp_dir: &str) -> tide::Result<()> {
     Ok(())
 }
 
-async fn multipart_upload(req: Request<()>, multipart_boundry: String, tmp_dir: &str) -> tide::Result<Vec<String>> {
+async fn multipart_upload(req: Request<()>, multipart_boundry: String, tmp_dir: PathBuf) -> tide::Result<Vec<String>> {
 
     let body_stream = BufferedBytesStream { inner: req };
 
@@ -176,15 +176,15 @@ async fn multipart_upload(req: Request<()>, multipart_boundry: String, tmp_dir: 
         let mut download_output;
 
         if field.name() == Some("file") {
-            download_file = format!("{}/download.json", tmp_dir);
+            download_file = tmp_dir.join("download.json");
             output.push("file".to_string());
         }
         else if field.name() == Some("fields") {
-            download_file = format!("{}/fields.csv", tmp_dir);
+            download_file = tmp_dir.join("fields.csv");
             output.push("fields".to_string());
         }
         else if field.name() == Some("tables") {
-            download_file = format!("{}/tables.csv", tmp_dir);
+            download_file = tmp_dir.join("tables.csv");
             output.push("tables".to_string());
         } else {
             break
@@ -198,8 +198,9 @@ async fn multipart_upload(req: Request<()>, multipart_boundry: String, tmp_dir: 
     Ok(output)
 }
 
-async fn json_request(mut req: Request<()>, tmp_dir: &str) -> tide::Result<()> {
-    let download_file = format!("{}/download.json", tmp_dir);
+async fn json_request(mut req: Request<()>, tmp_dir: PathBuf) -> tide::Result<()> {
+    let download_file = tmp_dir.join("download.json");
+
     let mut output = File::create(&download_file).await?;
     limited_copy(&mut req, &mut output).await?;
     Ok(())
@@ -265,26 +266,26 @@ async fn convert(req: Request<()>) -> tide::Result<Response> {
     } else {  
         clean_tmp()?;
         let uuid = Uuid::new_v4().to_hyphenated();
-        let tmp_dir = format!("/tmp/flatterer-{}", uuid);
+        let tmp_dir = std::env::temp_dir().join(format!("flatterer-{}", uuid));
         json_output = json!({ "id": uuid.to_string() });
         async_std::fs::create_dir(&tmp_dir).await?;
 
         let mut uploaded_files = vec![];
 
         if !multipart_boundry.is_empty() {
-            match multipart_upload(req, multipart_boundry, &tmp_dir).await {
+            match multipart_upload(req, multipart_boundry, tmp_dir.clone()).await {
                  Err(error) => {json_output = json!({"error": error.to_string()})}
                  Ok(val) => {uploaded_files = val}
             }
         } else if content_type == "application/json" {
-            if let Err(error) = json_request(req, &tmp_dir).await {
+            if let Err(error) = json_request(req, tmp_dir.clone()).await {
                 json_output = json!({"error": error.to_string()})
             }
             uploaded_files.push("file".to_string());
         } 
 
         if let Some(file_url) = &query.file_url {
-            if let Err(error) = download(file_url.clone(), &tmp_dir).await {
+            if let Err(error) = download(file_url.clone(), tmp_dir).await {
                 json_output = json!({"error": error.to_string()})
             }
             uploaded_files.push("file".to_string());
@@ -295,16 +296,17 @@ async fn convert(req: Request<()>) -> tide::Result<Response> {
         }
     }
 
-    let mut download_path = "".to_string();
-    let mut download_file = "".to_string();
+    let mut download_path = std::env::temp_dir();
+    let mut download_file = std::env::temp_dir();
     let mut id = "".to_string();
 
     if let Some(id_value) = json_output.get("id") {
         if let Some(id_string) = id_value.as_str() {
             id = id_string.to_string();
-            download_path = format!("/tmp/flatterer-{}", id_string);
-            download_file = format!("{}/download.json", &download_path);
-            if !std::path::Path::new(&download_file).exists() {
+            download_path.push(format!("flatterer-{}", id_string));
+            download_file.push(format!("flatterer-{}", id_string));
+            download_file.push("download.json");
+            if !download_file.exists() {
                 json_output = json!({"error": "id does not exist, you may need to ask you file to be downloaded again or to upload the file again."})
             }
         }
@@ -444,7 +446,7 @@ async fn convert(req: Request<()>) -> tide::Result<Response> {
     if output_format == "csv" {
         let main_table_name = query.main_table_name.unwrap_or_else(|| "main".to_string());
 
-        let csv_file = File::open(output_path.join(format!("csv/{}.csv", main_table_name))).await?;
+        let csv_file = File::open(output_path.join("csv").join(format!("{}.csv", main_table_name))).await?;
         let csv_file_buf = BufReader::new(csv_file);
 
         let mut res = Response::new(StatusCode::Ok);
@@ -482,12 +484,12 @@ async fn convert(req: Request<()>) -> tide::Result<Response> {
 
 fn run_flatterer(
     query: Query,
-    download_path: String,
+    download_path: PathBuf,
     output_path: PathBuf,
     json_lines: bool,
     path: String,
 ) -> tide::Result<()> {
-    let file = StdFile::open(format!("{}/download.json", download_path))?;
+    let file = StdFile::open(download_path.join("download.json"))?;
     let reader = StdBufReader::new(file);
 
     let output_format = query.output_format.unwrap_or_else(|| "zip".to_string());
@@ -525,17 +527,15 @@ fn run_flatterer(
     options.schema_titles = query.schema_titles.unwrap_or_else(|| "".to_string());
     options.json_stream = json_lines;
 
-    let fields_file = format!("{}/fields.csv", download_path);
-    let fields_path = std::path::Path::new(&fields_file);
+    let fields_path = download_path.join("fields.csv");
     if fields_path.exists() {
-        options.fields_csv = fields_file;
+        options.fields_csv = fields_path.to_string_lossy().into();
     }
     options.only_fields = query.fields_only.unwrap_or_else(|| false);
 
-    let tables_file = format!("{}/tables.csv", download_path);
-    let tables_path = std::path::Path::new(&tables_file);
+    let tables_path = download_path.join("tables.csv");
     if tables_path.exists() {
-        options.tables_csv = tables_file;
+        options.tables_csv = tables_path.to_string_lossy().into();
     }
     options.only_tables = query.tables_only.unwrap_or_else(|| false);
 
