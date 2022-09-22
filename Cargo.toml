@@ -1,6 +1,6 @@
 [package]
 name = "flatterer-web"
-version = "0.16.1"
+version = "0.16.2"
 authors = ["David Raznick <kindly@gmail.com>"]
 edition = "2021"
 description = "JSON flatterer UI"
@@ -26,6 +26,7 @@ futures-core="0.3"
 csv="1"
 pin-project-lite="0.2.8"
 open = "3.0.2"
+http-types = "2.12.0"
 
 [dev-dependencies]
 tide-testing = "0.1.3"

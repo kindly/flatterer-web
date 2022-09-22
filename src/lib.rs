@@ -21,6 +21,8 @@ use std::env::var;
 use std::path::PathBuf;
 use uuid::Uuid;
 use walkdir::WalkDir;
+use http_types::headers::HeaderValue;
+use tide::security::{CorsMiddleware, Origin};
 
 #[derive(Deserialize, Debug, Clone)]
 struct Query {
@@ -63,6 +65,13 @@ fn get_app() -> tide::Result<tide::Server<()>> {
     } else {
         "dist".to_owned()
     };
+
+    let cors = CorsMiddleware::new()
+        .allow_methods("GET, POST, OPTIONS".parse::<HeaderValue>()?)
+        .allow_origin(Origin::from("*"))
+        .allow_credentials(false);
+    
+    app.with(cors);
 
     app.at("/api/convert").get(convert);
     app.at("/api/convert").post(convert);
