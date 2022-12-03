@@ -22,11 +22,12 @@
       <v-container>
         <v-expansion-panels v-model="panel">
           <v-expansion-panel>
-            <v-expansion-panel-header>Upload File</v-expansion-panel-header>
+            <v-expansion-panel-title>Upload File</v-expansion-panel-title>
 
-            <v-expansion-panel-content>
+            <v-expansion-panel-text class="pt-6">
               <v-file-input
-                v-model="fileUpload"
+                v-on:change="uploadFile($event, 'fileUpload')"
+                v-on:click:clear="uploadFile($event, 'fileUpload')"
                 label="File input"
                 id="file-input"
                 name="file"
@@ -34,13 +35,13 @@
                 dense
                 required
               ></v-file-input>
-            </v-expansion-panel-content>
+            </v-expansion-panel-text>
           </v-expansion-panel>
           <v-expansion-panel>
-            <v-expansion-panel-header
-              >Download from URL</v-expansion-panel-header
+            <v-expansion-panel-title
+              >Download from URL</v-expansion-panel-title
             >
-            <v-expansion-panel-content>
+            <v-expansion-panel-text class="pt-6">
               <v-text-field
                 outlined
                 label="URL of JSON file"
@@ -48,17 +49,17 @@
                 dense
                 placeholder="https://link/to/file.json"
               ></v-text-field>
-            </v-expansion-panel-content>
+            </v-expansion-panel-text>
           </v-expansion-panel>
           <v-expansion-panel>
-            <v-expansion-panel-header>Paste</v-expansion-panel-header>
-            <v-expansion-panel-content>
+            <v-expansion-panel-title>Paste</v-expansion-panel-title>
+            <v-expansion-panel-text class="pt-6">
               <v-textarea
                 outlined
                 v-model="paste"
                 label="JSON data"
               ></v-textarea>
-            </v-expansion-panel-content>
+            </v-expansion-panel-text>
           </v-expansion-panel>
         </v-expansion-panels>
       </v-container>
@@ -141,11 +142,7 @@
                   label="Use titles from schema"
                   v-model="schemaTitle"
                   messages="Options for using titles within schema"
-                  :style="{
-                    visibility: json_schema.startsWith('http')
-                      ? 'visible'
-                      : 'hidden',
-                  }"
+                  :disabled="!json_schema.startsWith('http')"
                 ></v-select>
               </v-col>
             </v-row>
@@ -183,7 +180,8 @@
             <v-row v-if="panel != 2">
               <v-col>
                 <v-file-input
-                  v-model="fieldsUpload"
+                  v-on:change="uploadFile($event, 'fieldsUpload')"
+                  v-on:click:clear="uploadFile($event, 'fieldsUpload')"
                   label="fields.csv file"
                   id="fields-file"
                   name="fields"
@@ -203,7 +201,8 @@
               </v-col>
               <v-col>
                 <v-file-input
-                  v-model="tablesUpload"
+                  v-on:change="uploadFile($event, 'tablesUpload')"
+                  v-on:click:clear="uploadFile($event, 'tablesUpload')"
                   label="tables.csv file"
                   id="tables-file"
                   name="tables"
@@ -283,13 +282,24 @@
           <v-card-title class="subtitle-1">
             {{ table.table_name }}
           </v-card-title>
-          <v-data-table
-            :headers="fieldHeaders"
-            :items="table.fields"
-            item-key="field_name"
-            disable-pagination
-            hide-default-footer
-          ></v-data-table>
+
+          <v-table density="compact">
+            <thead>
+              <tr>
+                <th v-for="heading in fieldHeaders" :key="heading.value" class="text-left">
+                  {{heading.text}}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in table.fields"
+                :key="row.field_title"
+              >
+                <td v-for="heading in fieldHeaders" :key="heading.value">{{ row[heading.value] }}</td>
+              </tr>
+            </tbody>
+          </v-table>
         </v-card>
       </v-container>
     </v-card>
@@ -585,11 +595,18 @@ export default {
       this.postToApi(urlParams, requestData);
       this.submitType = "paste";
     },
-    onIntersect(entries) {
+    onIntersect(isIntersecting, entries) {
       if (entries[0].isIntersecting) {
         this.$store.commit("setListItem", entries[0].target.id);
       }
     },
+    uploadFile(e, upload_type) {
+      if (e.target.files && e.target.files.length > 0) {
+        this[upload_type] = e.target.files[0]
+      } else {
+        this[upload_type] = null
+      }
+    }
   },
 };
 </script>
