@@ -561,7 +561,7 @@ fn run_flatterer(
     options.path = path_vec;
 
     flatten(
-        reader,
+        Box::new(reader),
         output_path.to_string_lossy().to_string(),
         options
     )?;
