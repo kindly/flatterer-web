@@ -274,7 +274,7 @@ async fn convert(req: Request<()>) -> tide::Result<Response> {
         json_output = json!({ "id": id });
     } else {  
         clean_tmp()?;
-        let uuid = Uuid::new_v4().to_hyphenated();
+        let uuid = Uuid::new_v4().hyphenated();
         let tmp_dir = std::env::temp_dir().join(format!("flatterer-{}", uuid));
         json_output = json!({ "id": uuid.to_string() });
         async_std::fs::create_dir(&tmp_dir).await?;
