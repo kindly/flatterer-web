@@ -177,7 +177,7 @@
                 ></v-text-field>
               </v-col>
             </v-row>
-            <v-row v-if="panel != 2">
+            <v-row>
               <v-col>
                 <v-file-input
                   v-on:change="uploadFile($event, 'fieldsUpload')"
@@ -521,7 +521,7 @@ export default {
       this.apiResponse = null;
       this.fileStart = null;
       this.formState = "submitted";
-      fetch("/api/convert?" + urlParams, requestData).then(
+      fetch("/api/get_input?" + urlParams, requestData).then(
         function (response) {
           if (response.status != 200) {
             this.apiStatus = response.status;
@@ -577,6 +577,7 @@ export default {
       params.file_url = this.url;
       let urlParams = new URLSearchParams(params).toString();
       let formData = this.uploadFormData(false);
+      formData.append("download", this.url);
       let requestData = {
         headers: {},
         body: formData,
@@ -586,11 +587,11 @@ export default {
     },
     submitPaste(params) {
       let urlParams = new URLSearchParams(params).toString();
+      let formData = this.uploadFormData(false);
+      formData.append("file", this.paste);
       let requestData = {
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: this.paste,
+        headers: {},
+        body: formData,
       };
       this.postToApi(urlParams, requestData);
       this.submitType = "paste";

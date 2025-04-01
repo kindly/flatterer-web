@@ -1,5 +1,4 @@
 use flatterer_web;
-
-fn main() -> tide::Result<()>{
+fn main() -> std::io::Result<()>{
     flatterer_web::main()
 }
