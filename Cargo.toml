@@ -1,6 +1,6 @@
 [package]
 name = "flatterer-web"
-version = "0.21.1"
+version = "0.21.2"
 authors = ["David Raznick <kindly@gmail.com>"]
 edition = "2021"
 description = "JSON flatterer UI"
