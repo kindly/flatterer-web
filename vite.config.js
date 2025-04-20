@@ -1,6 +1,7 @@
 // Plugins
 import vue from '@vitejs/plugin-vue'
 import vuetify from 'vite-plugin-vuetify'
+import wasmPack from 'vite-plugin-wasm-pack';
 
 // Utilities
 import { defineConfig } from 'vite'
@@ -14,6 +15,7 @@ export default defineConfig({
     vuetify({
       autoImport: true,
     }),
+    wasmPack([],['@naaaan_bread/flatterer-lite'])
   ],
   define: { 'process.env': {} },
   resolve: {

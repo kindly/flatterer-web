@@ -84,7 +84,9 @@
                   <template v-slot:label>
                     <strong>Position in JSON:</strong>
                   </template>
-                  <v-radio label="Guess based on data" value="top"></v-radio>
+                  
+                  <v-radio v-if="!$store.state.wasm" label="Guess based on data" value="top"></v-radio>
+                  <v-radio v-if="$store.state.wasm" label="Object or Array" value="top"></v-radio>
                   <v-radio label="JSON stream" value="stream"></v-radio>
                   <v-radio label="Array in object" value="nested"></v-radio>
                 </v-radio-group>
@@ -160,10 +162,10 @@
                 <v-text-field
                   outlined
                   dense
-                  label="Path Seperator"
-                  v-model="path_seperator"
+                  label="Path Separator"
+                  v-model="path_separator"
                   placeholder="_"
-                  messages="Seperator between each part of the output field and table name. Defaults to `_`."
+                  messages="Separator between each part of the output field and table name. Defaults to `_`."
                 ></v-text-field>
               </v-col>
               <v-col>
@@ -173,11 +175,11 @@
                   label="Pushdown"
                   v-model="pushdown"
                   placeholder="id"
-                  messages="Field to pushdown to seperate tables"
+                  messages="Field to pushdown to separate tables"
                 ></v-text-field>
               </v-col>
             </v-row>
-            <v-row>
+            <v-row v-if="!$store.state.wasm">
               <v-col>
                 <v-file-input
                   v-on:change="uploadFile($event, 'fieldsUpload')"
@@ -317,12 +319,12 @@
               >Download XLSX</v-btn
             >
           </v-col>
-          <v-col>
+          <v-col v-if="!$store.state.wasm">
             <v-btn color="success" :href="generateDownload('sqlite')"
               >Download SQLite</v-btn
             >
           </v-col>
-          <v-col>
+          <v-col v-if="!$store.state.wasm">
             <v-btn color="success" :href="generateDownload('csv')"
               >{{ main_table_name || "main" }} table as CSV</v-btn
             >
@@ -344,6 +346,11 @@
 </template>
 
 <script>
+
+
+import { from_bytes, from_string, get_url } from '@naaaan_bread/flatterer-lite';
+
+
 function defaultData() {
   return {
     panel: 0,
@@ -353,7 +360,7 @@ function defaultData() {
     useTitle: ["No Title", "Full Title", "Slug", "Underscore Slug"],
     arrayPosition: "top",
     array_key: "",
-    path_seperator: "",
+    path_separator: "",
     table_prefix: "",
     schemaTitle: "No Title",
     json_schema: "",
@@ -421,7 +428,7 @@ export default {
         this.paste,
         this.arrayPosition,
         this.array_key,
-        this.path_seperator,
+        this.path_separator,
         this.table_prefix,
         this.schemaTitle,
         this.json_schema,
@@ -474,7 +481,7 @@ export default {
         "inline_one_to_one",
         "main_table_name",
         "table_prefix",
-        "path_seperator",
+        "path_separator",
         "array_key",
         "json_schema",
         "fields_only",
@@ -495,7 +502,24 @@ export default {
       }
       return params;
     },
+
     generateDownload(downloadType) {
+      if (this.$store.state.wasm) {
+        let lookup = {
+          'zip': 'output.zip',
+          'xlsx': 'output.xlsx',
+          'fields': 'fields.csv',
+          'tables': 'tables.csv',
+        };
+        let download = lookup[downloadType];
+        if (!this.apiResponse.files[download]) {
+          return "";
+        }
+
+        let blob = new File([this.apiResponse.files[download].bytes], download);
+        return URL.createObjectURL(blob);
+      }
+
       let params = this.dataToParams();
       params.id = this.id;
       params.output_format = downloadType;
@@ -521,6 +545,7 @@ export default {
       this.apiResponse = null;
       this.fileStart = null;
       this.formState = "submitted";
+
       fetch("/api/get_input?" + urlParams, requestData).then(
         function (response) {
           if (response.status != 200) {
@@ -564,16 +589,46 @@ export default {
       return formData;
     },
     upload(params) {
+      if (this.$store.state.wasm) {
+        let reader = new FileReader();
+
+        reader.readAsArrayBuffer(this.fileUpload);
+        reader.onload = () => {
+          let bytes = new Uint8Array(reader.result);
+          let result = from_bytes(bytes, params);
+          result.then((value) => {
+            this.apiResponse = value;
+            this.$nextTick(() => {
+              document.getElementById("success").scrollIntoView();
+            });
+          });
+        };
+
+        return 
+      }
       let urlParams = new URLSearchParams(params).toString();
       let formData = this.uploadFormData(true);
       let requestData = {
         headers: {},
         body: formData,
       };
+
+
       this.postToApi(urlParams, requestData);
       this.submitType = "upload";
     },
     downloadURL(params) {
+      if (this.$store.state.wasm) {
+        let result = get_url(this.url, params);
+        result.then((value) => {
+          this.apiResponse = value;
+          this.$nextTick(() => {
+            document.getElementById("success").scrollIntoView();
+          });
+        });
+        return
+      }
+
       params.file_url = this.url;
       let urlParams = new URLSearchParams(params).toString();
       let formData = this.uploadFormData(false);
@@ -586,6 +641,16 @@ export default {
       this.submitType = "url";
     },
     submitPaste(params) {
+      if (this.$store.state.wasm) {
+        let result = from_string(this.paste, params);
+        result.then((value) => {
+          this.apiResponse = value;
+          this.$nextTick(() => {
+            document.getElementById("success").scrollIntoView();
+          });
+        });
+        return
+      }
       let urlParams = new URLSearchParams(params).toString();
       let formData = this.uploadFormData(false);
       formData.append("file", this.paste);

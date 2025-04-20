@@ -17,6 +17,7 @@ use actix_multipart::form::MultipartForm;
 use std::io::Read;
 use libflatterer::{flatten, Options};
 
+
 #[derive(Debug, MultipartForm)]
 struct UploadForm {
     #[multipart(limit = "100MB")]
@@ -38,7 +39,7 @@ struct Query {
     inline_one_to_one: Option<bool>,
     json_schema: Option<String>,
     table_prefix: Option<String>,
-    path_seperator: Option<String>,
+    path_separator: Option<String>,
     schema_titles: Option<String>,
     fields_only: Option<bool>,
     tables_only: Option<bool>,
@@ -86,7 +87,7 @@ fn run_flatterer(
     options.schema = query.json_schema.unwrap_or_else(|| "".to_string());
 
     options.table_prefix = query.table_prefix.unwrap_or_else(|| "".to_string());
-    options.path_separator = query.path_seperator.unwrap_or_else(|| "_".to_string());
+    options.path_separator = query.path_separator.unwrap_or_else(|| "_".to_string());
     options.schema_titles = query.schema_titles.unwrap_or_else(|| "".to_string());
     options.json_stream = json_lines;
 
@@ -237,6 +238,9 @@ async fn get_input(query: web::Query<Query>, MultipartForm(form): MultipartForm<
     process(query, Some(form)).await
 }
 
+async fn wasm() -> impl Responder {
+    return HttpResponse::Ok().body(json!({"wasm": false}).to_string());
+}
 
 async fn process(query: web::Query<Query>, upload_form: Option<UploadForm>) -> Either<HttpResponse<BoxBody>, impl Responder> {
     let tmp_dir = TempDir::new();
@@ -515,6 +519,9 @@ pub async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())
+            .service(
+                web::resource("/wasm.json").route(web::get().to(wasm))
+            )
             .service(
                 web::resource("/api/get_input")
                 .route(web::post().to(get_input))

@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@mdi/font": "7.0.96",
+    "@naaaan_bread/flatterer-lite": "0.3.1",
     "roboto-fontface": "*",
     "vue": "^3.2.38",
     "vue-router": "4",
@@ -17,7 +18,8 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^3.0.3",
-    "vite": "^3.1.9",
-    "vite-plugin-vuetify": "^1.0.0-alpha.12"
+    "vite": "^3.2.11",
+    "vite-plugin-vuetify": "^1.0.0-alpha.12",
+    "vite-plugin-wasm-pack": "^0.1.12"
   }
 }
