@@ -601,7 +601,10 @@ export default {
             this.$nextTick(() => {
               document.getElementById("success").scrollIntoView();
             });
-          });
+          }).catch((e) => {
+            this.apiError = e.toString();
+            this.apiStatus = 400;
+          });;
         };
 
         return 
@@ -625,6 +628,9 @@ export default {
           this.$nextTick(() => {
             document.getElementById("success").scrollIntoView();
           });
+        }).catch((e) => {
+          this.apiError = e.toString();
+          this.apiStatus = 400;
         });
         return
       }
@@ -648,7 +654,10 @@ export default {
           this.$nextTick(() => {
             document.getElementById("success").scrollIntoView();
           });
-        });
+        }).catch((e) => {
+          this.apiError = e.toString();
+          this.apiStatus = 400;
+        })
         return
       }
       let urlParams = new URLSearchParams(params).toString();
