@@ -602,8 +602,12 @@ export default {
               document.getElementById("success").scrollIntoView();
             });
           }).catch((e) => {
-            this.apiError = e.toString();
+            this.apiError = e.error;
+            this.fileStart = e.preview_string;
             this.apiStatus = 400;
+            this.$nextTick(() => {
+              document.getElementById("error").scrollIntoView();
+            });
           });;
         };
 
@@ -629,8 +633,12 @@ export default {
             document.getElementById("success").scrollIntoView();
           });
         }).catch((e) => {
-          this.apiError = e.toString();
+          this.apiError = e.error;
+          this.fileStart = e.preview_string;
           this.apiStatus = 400;
+          this.$nextTick(() => {
+            document.getElementById("error").scrollIntoView();
+          });
         });
         return
       }
@@ -655,8 +663,12 @@ export default {
             document.getElementById("success").scrollIntoView();
           });
         }).catch((e) => {
-          this.apiError = e.toString();
+          this.apiError = e.error;
+          this.fileStart = e.preview_string;
           this.apiStatus = 400;
+          this.$nextTick(() => {
+            document.getElementById("error").scrollIntoView();
+          });
         })
         return
       }

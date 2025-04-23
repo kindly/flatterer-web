@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "@mdi/font": "7.0.96",
-    "@naaaan_bread/flatterer-lite": "0.3.1",
+    "@naaaan_bread/flatterer-lite": "0.4.1",
     "roboto-fontface": "*",
     "vue": "^3.2.38",
     "vue-router": "4",
