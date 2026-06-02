@@ -195,7 +195,7 @@ fn zip_output(output_path: PathBuf, tmp_dir_path: PathBuf) -> Result<()> {
     let file = File::create(&zip_file)?;
     let mut zip = zip::ZipWriter::new(file);
 
-    let options = zip::write::FileOptions::default();
+    let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
 
     for entry in WalkDir::new(output_path.clone())
         .min_depth(1)
