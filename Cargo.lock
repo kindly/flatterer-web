@@ -1866,7 +1866,7 @@ dependencies = [
 
 [[package]]
 name = "flatterer-web"
-version = "0.24.0"
+version = "0.24.1"
 dependencies = [
  "actix-files",
  "actix-multipart",
@@ -2930,9 +2930,9 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
 name = "libflatterer"
-version = "0.24.0"
+version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b90aae38c22ca8fd4076db3e5ca7468c0ce5a4e3061a08494683480c7265223e"
+checksum = "3b6387b6cf4df8a3d61e33526f3e9e4d9fa6b6f993fdf250f0f66807693ec645"
 dependencies = [
  "arrow-array",
  "arrow-schema",
